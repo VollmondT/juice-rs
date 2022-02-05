@@ -1,7 +1,7 @@
 extern crate core;
 
 pub use agent::{Agent, Builder};
-pub use ice_hander::IceHander;
+pub use ice_hander::Handler;
 
 pub mod agent;
 mod agent_config;

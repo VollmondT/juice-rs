@@ -8,8 +8,8 @@ use libjuice_sys as sys;
 use crate::agent_config::Config;
 use crate::agent_error::AgentError;
 use crate::agent_state::AgentState;
+use crate::ice_hander::Handler;
 use crate::log::ensure_logging;
-use crate::IceHander;
 
 type Result<T> = std::result::Result<T, AgentError>;
 
@@ -27,11 +27,11 @@ pub struct Builder {
     stun_server: String,
     stun_server_port: u16,
     port_range: Option<(u16, u16)>,
-    handler: Box<dyn IceHander>,
+    handler: Box<Handler>,
 }
 
 impl Builder {
-    pub fn new(handler: Box<dyn IceHander>) -> Self {
+    pub fn new(handler: Box<Handler>) -> Self {
         Builder {
             stun_server: String::from("stun.l.google.com"),
             stun_server_port: 19302,
@@ -60,7 +60,7 @@ impl Builder {
 
 pub struct Agent {
     agent: *mut sys::juice_agent_t,
-    handler: Arc<Mutex<Box<dyn IceHander>>>,
+    handler: Arc<Mutex<Box<Handler>>>,
 }
 
 impl Drop for Agent {
@@ -125,46 +125,22 @@ mod tests {
     use std::sync::Barrier;
 
     use crate::agent_state::AgentState;
-    use crate::IceHander;
+    use crate::Handler;
 
     use super::*;
-
-    struct DummyHandler {
-        gathering: Arc<std::sync::Barrier>,
-    }
-
-    impl DummyHandler {
-        fn new(gathering: Arc<std::sync::Barrier>) -> Self {
-            Self { gathering }
-        }
-    }
-
-    impl IceHander for DummyHandler {
-        fn on_state_changed(&mut self, state: AgentState) {
-            println!("state: {:?}", state)
-        }
-
-        fn on_candidate(&mut self, candidate: String) {
-            println!("local candidate: {:?}", candidate)
-        }
-
-        fn on_gathering_done(&mut self) {
-            println!("gathering done");
-            let _ = self.gathering.wait();
-        }
-
-        fn on_recv(&mut self) {
-            todo!()
-        }
-    }
 
     #[test]
     fn build() {
         crate::test_util::logger_init();
-        let gathering_barrier = Arc::new(Barrier::new(1));
-        let client = Builder::new(Box::new(DummyHandler::new(gathering_barrier))).build();
-        assert_eq!(client.state(), AgentState::Disconnected);
-        let _ = client.local_description().unwrap();
+
+        let handler = Handler::default();
+        let agent = Builder::new(handler.to_box()).build();
+
+        assert_eq!(agent.state(), AgentState::Disconnected);
+        log::debug!(
+            "local description \n\"{}\"",
+            agent.local_description().unwrap()
+        );
     }
 
     #[test]
@@ -172,19 +148,34 @@ mod tests {
         crate::test_util::logger_init();
 
         let gathering_barrier = Arc::new(Barrier::new(2));
-        let mut client =
-            Builder::new(Box::new(DummyHandler::new(gathering_barrier.clone()))).build();
-        assert_eq!(client.state(), AgentState::Disconnected);
-        println!(
+
+        let handler = Handler::default()
+            .state_handler(|state| log::debug!("State changed to: {:?}", state))
+            .gathering_finished_handler({
+                let barrier = gathering_barrier.clone();
+                move || {
+                    log::debug!("Gathering finished");
+                    barrier.wait();
+                }
+            })
+            .candidate_handler(|candidate| log::debug!("Local candidate: \"{}\"", candidate));
+
+        let mut agent = Builder::new(handler.to_box()).build();
+
+        assert_eq!(agent.state(), AgentState::Disconnected);
+        log::debug!(
             "local description \n\"{}\"",
-            client.local_description().unwrap()
+            agent.local_description().unwrap()
         );
-        client.gather_candidates().unwrap();
-        assert_eq!(client.state(), AgentState::Gathering);
+
+        agent.gather_candidates().unwrap();
+        assert_eq!(agent.state(), AgentState::Gathering);
+
         let _ = gathering_barrier.wait();
-        println!(
+
+        log::debug!(
             "local description \n\"{}\"",
-            client.local_description().unwrap()
+            agent.local_description().unwrap()
         );
     }
 }
