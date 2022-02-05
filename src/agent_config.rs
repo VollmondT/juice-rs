@@ -1,9 +1,11 @@
 use std::ffi::{c_void, CString};
+use std::panic::catch_unwind;
 use std::ptr;
 
 use libjuice_sys as sys;
 
 use crate::agent::Agent;
+use crate::agent_state::AgentState;
 
 #[derive(Clone)]
 pub(crate) struct Config<'a> {
@@ -39,7 +41,12 @@ unsafe extern "C" fn on_state_changed(
     user_ptr: *mut std::os::raw::c_void,
 ) {
     let agent = &mut *(user_ptr as *mut Agent);
-    agent.on_state_changed()
+    if let Err(e) = state
+        .try_into()
+        .map(|s: AgentState| catch_unwind(|| agent.on_state_changed(s)))
+    {
+        log::error!("state callback failure {:?}", e)
+    }
 }
 
 unsafe extern "C" fn on_candidate(

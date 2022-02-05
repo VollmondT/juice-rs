@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use libjuice_sys as sys;
 
 use crate::agent_config::Config;
+use crate::agent_state::AgentState;
 use crate::log::ensure_logging;
 use crate::IceHander;
 
@@ -54,10 +55,20 @@ impl Drop for Agent {
     }
 }
 
+unsafe impl Sync for Agent {}
+
 impl Agent {
-    pub(crate) fn on_state_changed(&self) {
+    pub(crate) fn state(&self) -> AgentState {
+        unsafe {
+            sys::juice_get_state(self.agent)
+                .try_into()
+                .expect("failed to convert state")
+        }
+    }
+
+    pub(crate) fn on_state_changed(&self, state: AgentState) {
         let mut h = self.handler.lock().unwrap();
-        h.on_state_changed()
+        h.on_state_changed(state)
     }
 
     pub(crate) fn on_candidate(&self) {
@@ -75,6 +86,7 @@ impl Agent {
 
 #[cfg(test)]
 mod tests {
+    use crate::agent_state::AgentState;
     use crate::IceHander;
 
     use super::*;
@@ -82,7 +94,7 @@ mod tests {
     struct DummyHandler {}
 
     impl IceHander for DummyHandler {
-        fn on_state_changed(&mut self) {
+        fn on_state_changed(&mut self, state: AgentState) {
             todo!()
         }
 
@@ -102,6 +114,7 @@ mod tests {
     #[test]
     fn build() {
         crate::test_util::logger_init();
-        let _ = Builder::new(Box::new(DummyHandler {})).build();
+        let client = Builder::new(Box::new(DummyHandler {})).build();
+        assert_eq!(client.state(), AgentState::Disconnected);
     }
 }
