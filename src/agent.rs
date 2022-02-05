@@ -1,4 +1,5 @@
 use std::ffi::{CStr, CString};
+use std::marker::PhantomData;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 use std::sync::{Arc, Mutex};
@@ -45,6 +46,7 @@ impl Builder {
         let mut agent = Box::new(Agent {
             agent: ptr::null_mut(),
             handler: Arc::new(Mutex::new(self.handler)),
+            _agent: PhantomData::default(),
         });
         let cfg = Config {
             stun_server_host: CString::new(self.stun_server).expect("invalid stun server host"),
@@ -61,6 +63,7 @@ impl Builder {
 pub struct Agent {
     agent: *mut sys::juice_agent_t,
     handler: Arc<Mutex<Box<Handler>>>,
+    _agent: PhantomData<sys::juice_agent_t>,
 }
 
 impl Drop for Agent {
@@ -97,6 +100,11 @@ impl Agent {
 
     pub fn gather_candidates(&mut self) -> Result<()> {
         unsafe { raw_to_result(sys::juice_gather_candidates(self.agent)) }
+    }
+
+    pub fn set_remote_description(&mut self, sdp: String) -> Result<()> {
+        let s = CString::new(sdp).map_err(|_| AgentError::InvalidArgument)?;
+        unsafe { raw_to_result(sys::juice_set_remote_description(self.agent, s.as_ptr())) }
     }
 
     pub(crate) fn on_state_changed(&self, state: AgentState) {
