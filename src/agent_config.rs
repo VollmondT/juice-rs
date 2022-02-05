@@ -1,11 +1,9 @@
-use std::ffi::{c_void, CString};
-use std::panic::catch_unwind;
+use std::ffi::{c_void, CStr, CString};
 use std::ptr;
 
 use libjuice_sys as sys;
 
 use crate::agent::Agent;
-use crate::agent_state::AgentState;
 
 #[derive(Clone)]
 pub(crate) struct Config<'a> {
@@ -41,21 +39,23 @@ unsafe extern "C" fn on_state_changed(
     user_ptr: *mut std::os::raw::c_void,
 ) {
     let agent = &mut *(user_ptr as *mut Agent);
-    if let Err(e) = state
-        .try_into()
-        .map(|s: AgentState| catch_unwind(|| agent.on_state_changed(s)))
-    {
-        log::error!("state callback failure {:?}", e)
+
+    if let Err(e) = state.try_into().map(|s| agent.on_state_changed(s)) {
+        log::error!("failed to map state {:?}", e)
     }
 }
 
 unsafe extern "C" fn on_candidate(
     _: *mut sys::juice_agent_t,
-    _sdp: *const std::os::raw::c_char,
+    sdp: *const std::os::raw::c_char,
     user_ptr: *mut std::os::raw::c_void,
 ) {
     let agent = &mut *(user_ptr as *mut Agent);
-    agent.on_candidate()
+    let candidate = {
+        let s = CStr::from_ptr(sdp);
+        String::from_utf8_lossy(s.to_bytes())
+    };
+    agent.on_candidate(candidate.to_string())
 }
 
 unsafe extern "C" fn on_gathering_done(_: *mut sys::juice_agent, user_ptr: *mut std::ffi::c_void) {
