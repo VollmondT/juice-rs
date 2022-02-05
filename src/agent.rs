@@ -1,13 +1,27 @@
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
+use std::os::raw::{c_char, c_int};
 use std::ptr;
 use std::sync::{Arc, Mutex};
 
 use libjuice_sys as sys;
 
 use crate::agent_config::Config;
+use crate::agent_error::AgentError;
 use crate::agent_state::AgentState;
 use crate::log::ensure_logging;
 use crate::IceHander;
+
+type Result<T> = std::result::Result<T, AgentError>;
+
+fn raw_to_result(retcode: c_int) -> Result<()> {
+    match retcode {
+        0 => Ok(()),
+        sys::JUICE_ERR_INVALID => Err(AgentError::InvalidArgument),
+        sys::JUICE_ERR_FAILED => Err(AgentError::Failed),
+        sys::JUICE_ERR_NOT_AVAIL => Err(AgentError::NotAvailable),
+        _ => unreachable!(),
+    }
+}
 
 pub struct Builder {
     stun_server: String,
@@ -58,12 +72,27 @@ impl Drop for Agent {
 unsafe impl Sync for Agent {}
 
 impl Agent {
-    pub(crate) fn state(&self) -> AgentState {
+    pub fn state(&self) -> AgentState {
         unsafe {
             sys::juice_get_state(self.agent)
                 .try_into()
                 .expect("failed to convert state")
         }
+    }
+
+    pub fn local_description(&self) -> Result<String> {
+        let mut buf: Vec<c_char> = Vec::with_capacity(sys::JUICE_MAX_SDP_STRING_LEN as usize);
+        let res = unsafe {
+            let res = sys::juice_get_local_description(
+                self.agent,
+                buf.as_mut_ptr(),
+                buf.len() as sys::size_t,
+            );
+            let _ = raw_to_result(res)?;
+            let s = CStr::from_ptr(buf.as_mut_ptr());
+            String::from_utf8_lossy(s.to_bytes())
+        };
+        Ok(res.to_string())
     }
 
     pub(crate) fn on_state_changed(&self, state: AgentState) {
@@ -94,7 +123,7 @@ mod tests {
     struct DummyHandler {}
 
     impl IceHander for DummyHandler {
-        fn on_state_changed(&mut self, state: AgentState) {
+        fn on_state_changed(&mut self, _state: AgentState) {
             todo!()
         }
 
@@ -116,5 +145,6 @@ mod tests {
         crate::test_util::logger_init();
         let client = Builder::new(Box::new(DummyHandler {})).build();
         assert_eq!(client.state(), AgentState::Disconnected);
+        let _ = client.local_description().unwrap();
     }
 }
