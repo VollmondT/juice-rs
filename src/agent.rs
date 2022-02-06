@@ -152,6 +152,28 @@ impl Agent {
         };
         Ok(ret)
     }
+
+    pub fn get_selected_addresses(&self) -> Result<(String, String)> {
+        let mut local = vec![0; sys::JUICE_MAX_SDP_STRING_LEN as _];
+        let mut remote = vec![0; sys::JUICE_MAX_SDP_STRING_LEN as _];
+        let ret = unsafe {
+            let res = sys::juice_get_selected_addresses(
+                self.holder.agent,
+                local.as_mut_ptr() as _,
+                local.len() as _,
+                remote.as_mut_ptr() as _,
+                remote.len() as _,
+            );
+            let _ = raw_retcode_to_result(res)?;
+            let l = CStr::from_ptr(local.as_mut_ptr());
+            let r = CStr::from_ptr(remote.as_mut_ptr());
+            (
+                String::from_utf8_lossy(l.to_bytes()).to_string(),
+                String::from_utf8_lossy(r.to_bytes()).to_string(),
+            )
+        };
+        Ok(ret)
+    }
 }
 
 pub(crate) struct Holder {

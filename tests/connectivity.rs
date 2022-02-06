@@ -71,6 +71,14 @@ fn connectivity_no_trickle() {
         "second selected candidates: {:?}",
         second.get_selected_candidates()
     );
+    log::info!(
+        "first selected addresses: {:?}",
+        first.get_selected_addresses()
+    );
+    log::info!(
+        "second selected addresses: {:?}",
+        second.get_selected_addresses()
+    );
 
     first.send("hello".as_bytes()).unwrap();
     assert_eq!(
@@ -202,6 +210,14 @@ fn connectivity_trickle() {
     log::info!(
         "second selected candidates: {:?}",
         second.get_selected_candidates()
+    );
+    log::info!(
+        "first selected addresses: {:?}",
+        first.get_selected_addresses()
+    );
+    log::info!(
+        "second selected addresses: {:?}",
+        second.get_selected_addresses()
     );
 
     first.send("hello".as_bytes()).unwrap();
