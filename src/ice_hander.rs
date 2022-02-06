@@ -23,6 +23,8 @@ pub struct Handler {
     on_gathering_done: Option<Box<dyn FnMut() + 'static + Send>>,
     /// Incoming packet
     on_recv: Option<Box<dyn FnMut(&[u8]) + 'static + Send>>,
+    /// Do not allow move
+    _pin: std::marker::PhantomPinned,
 }
 
 impl Handler {

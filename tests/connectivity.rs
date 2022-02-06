@@ -29,7 +29,7 @@ fn connectivity_no_trickle() {
             let _ = first_tx.send(packet.to_vec());
         });
 
-    let first = Builder::new(first_handler.to_box()).build();
+    let first = Builder::new(first_handler.to_box()).build().unwrap();
 
     let (second_tx, second_rx) = channel();
     let second_handler = Handler::default()
@@ -45,7 +45,7 @@ fn connectivity_no_trickle() {
             log::debug!("second received {:?}", packet);
             let _ = second_tx.send(packet.to_vec());
         });
-    let second = Builder::new(second_handler.to_box()).build();
+    let second = Builder::new(second_handler.to_box()).build().unwrap();
 
     first.gather_candidates().unwrap();
     second.gather_candidates().unwrap();
@@ -60,8 +60,8 @@ fn connectivity_no_trickle() {
 
     sleep(Duration::from_secs(2));
 
-    assert_eq!(first.state(), AgentState::Completed);
-    assert_eq!(second.state(), AgentState::Completed);
+    assert_eq!(first.get_state(), AgentState::Completed);
+    assert_eq!(second.get_state(), AgentState::Completed);
 
     log::info!(
         "first selected candidates: {:?}",
@@ -91,7 +91,7 @@ enum TrickleEvent {
 }
 
 // tricky trickle
-fn trickle_signaling(ch: Receiver<TrickleEvent>, agent: Arc<Box<Agent>>) {
+fn trickle_signaling(ch: Receiver<TrickleEvent>, agent: Arc<Agent>) {
     let mut counter = 0;
     loop {
         match ch.recv_timeout(Duration::from_secs(1)) {
@@ -140,7 +140,7 @@ fn connectivity_trickle() {
             }
         });
 
-    let first = Arc::new(Builder::new(first_handler.to_box()).build());
+    let first = Arc::new(Builder::new(first_handler.to_box()).build().unwrap());
 
     let (second_tx, second_rx) = channel();
     let (second_candidate_tx, second_candidate_rx) = channel();
@@ -164,7 +164,7 @@ fn connectivity_trickle() {
             let _ = second_candidate_tx.send(TrickleEvent::Candidate(sdp));
         });
 
-    let second = Arc::new(Builder::new(second_handler.to_box()).build());
+    let second = Arc::new(Builder::new(second_handler.to_box()).build().unwrap());
 
     let handle1 = {
         let first = first.clone();
@@ -192,8 +192,8 @@ fn connectivity_trickle() {
 
     sleep(Duration::from_secs(2));
 
-    assert_eq!(first.state(), AgentState::Completed);
-    assert_eq!(second.state(), AgentState::Completed);
+    assert_eq!(first.get_state(), AgentState::Completed);
+    assert_eq!(second.get_state(), AgentState::Completed);
 
     log::info!(
         "first selected candidates: {:?}",

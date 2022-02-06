@@ -3,13 +3,13 @@ use std::ptr;
 
 use libjuice_sys as sys;
 
-use crate::agent::Agent;
+use crate::agent::Holder;
 
 #[derive(Clone)]
 pub(crate) struct Config<'a> {
     pub(crate) stun_server_host: CString,
     pub(crate) stun_server_port: u16,
-    pub(crate) parent: &'a crate::agent::Agent,
+    pub(crate) parent: &'a crate::agent::Holder,
     pub(crate) port_range: Option<(u16, u16)>,
 }
 
@@ -38,7 +38,7 @@ unsafe extern "C" fn on_state_changed(
     state: sys::juice_state_t,
     user_ptr: *mut std::os::raw::c_void,
 ) {
-    let agent = &mut *(user_ptr as *mut Agent);
+    let agent: &Holder = &*(user_ptr as *const _);
 
     if let Err(e) = state.try_into().map(|s| agent.on_state_changed(s)) {
         log::error!("failed to map state {:?}", e)
@@ -50,7 +50,7 @@ unsafe extern "C" fn on_candidate(
     sdp: *const std::os::raw::c_char,
     user_ptr: *mut std::os::raw::c_void,
 ) {
-    let agent = &mut *(user_ptr as *mut Agent);
+    let agent: &Holder = &*(user_ptr as *const _);
     let candidate = {
         let s = CStr::from_ptr(sdp);
         String::from_utf8_lossy(s.to_bytes())
@@ -59,7 +59,7 @@ unsafe extern "C" fn on_candidate(
 }
 
 unsafe extern "C" fn on_gathering_done(_: *mut sys::juice_agent, user_ptr: *mut std::ffi::c_void) {
-    let agent = &mut *(user_ptr as *mut Agent);
+    let agent: &Holder = &*(user_ptr as *const _);
     agent.on_gathering_done()
 }
 
@@ -69,7 +69,7 @@ unsafe extern "C" fn on_recv(
     len: u64,
     user_ptr: *mut std::ffi::c_void,
 ) {
-    let agent = &mut *(user_ptr as *mut Agent);
+    let agent: &Holder = &*(user_ptr as *const _);
     let packet = core::slice::from_raw_parts(data as _, len as _);
     agent.on_recv(packet)
 }

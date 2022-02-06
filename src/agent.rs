@@ -1,8 +1,7 @@
 use std::ffi::{CStr, CString};
-use std::marker::PhantomData;
 use std::os::raw::c_int;
 use std::ptr;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use libjuice_sys as sys;
 
@@ -25,6 +24,7 @@ fn raw_retcode_to_result(retcode: c_int) -> Result<()> {
     }
 }
 
+/// Agent builder.
 pub struct Builder {
     stun_server: String,
     stun_server_port: u16,
@@ -33,6 +33,7 @@ pub struct Builder {
 }
 
 impl Builder {
+    /// Create new builder with given handler
     pub fn new(handler: Box<Handler>) -> Self {
         Builder {
             stun_server: String::from("stun.l.google.com"),
@@ -42,56 +43,53 @@ impl Builder {
         }
     }
 
-    pub fn build(self) -> Box<Agent> {
+    /// Build agent
+    pub fn build(self) -> Result<Agent> {
         ensure_logging();
-        let mut agent = Box::new(Agent {
+
+        let mut holder = Box::new(Holder {
             agent: ptr::null_mut(),
-            handler: Arc::new(Mutex::new(self.handler)),
-            _agent: PhantomData::default(),
+            handler: Mutex::new(self.handler),
         });
+
         let cfg = Config {
             stun_server_host: CString::new(self.stun_server).expect("invalid stun server host"),
             stun_server_port: self.stun_server_port,
-            parent: agent.as_mut(),
+            parent: &holder as _,
             port_range: self.port_range,
         };
         let ptr = unsafe { sys::juice_create(&cfg.as_raw() as *const _) };
-        agent.agent = ptr;
-        agent
+        if ptr.is_null() {
+            Err(AgentError::Failed)
+        } else {
+            holder.agent = ptr;
+            Ok(Agent { holder })
+        }
     }
 }
 
 pub struct Agent {
-    agent: *mut sys::juice_agent_t,
-    handler: Arc<Mutex<Box<Handler>>>,
-    _agent: PhantomData<sys::juice_agent_t>,
+    holder: Box<Holder>,
 }
-
-impl Drop for Agent {
-    fn drop(&mut self) {
-        unsafe { sys::juice_destroy(self.agent) }
-    }
-}
-
-// SAFETY: All juice calls protected by mutex internally and can be invoked from any thread
-unsafe impl Sync for Agent {}
-
-unsafe impl Send for Agent {}
-
 impl Agent {
-    pub fn state(&self) -> AgentState {
+    /// Get ICE state
+    pub fn get_state(&self) -> AgentState {
         unsafe {
-            sys::juice_get_state(self.agent)
+            sys::juice_get_state(self.holder.agent)
                 .try_into()
                 .expect("failed to convert state")
         }
     }
 
+    /// Get local sdp
     pub fn get_local_description(&self) -> Result<String> {
         let mut buf = vec![0; sys::JUICE_MAX_SDP_STRING_LEN as _];
         let res = unsafe {
-            let res =
-                sys::juice_get_local_description(self.agent, buf.as_mut_ptr(), buf.len() as _);
+            let res = sys::juice_get_local_description(
+                self.holder.agent,
+                buf.as_mut_ptr(),
+                buf.len() as _,
+            );
             let _ = raw_retcode_to_result(res)?;
             let s = CStr::from_ptr(buf.as_mut_ptr());
             String::from_utf8_lossy(s.to_bytes())
@@ -101,42 +99,44 @@ impl Agent {
 
     /// Start ICE candidates gathering
     pub fn gather_candidates(&self) -> Result<()> {
-        let ret = unsafe { sys::juice_gather_candidates(self.agent) };
+        let ret = unsafe { sys::juice_gather_candidates(self.holder.agent) };
         raw_retcode_to_result(ret)
     }
 
     /// Set remote description
     pub fn set_remote_description(&self, sdp: String) -> Result<()> {
         let s = CString::new(sdp).map_err(|_| AgentError::InvalidArgument)?;
-        let ret = unsafe { sys::juice_set_remote_description(self.agent, s.as_ptr()) };
+        let ret = unsafe { sys::juice_set_remote_description(self.holder.agent, s.as_ptr()) };
         raw_retcode_to_result(ret)
     }
 
     /// Add remote candidate
     pub fn add_remote_candidate(&self, sdp: String) -> Result<()> {
         let s = CString::new(sdp).map_err(|_| AgentError::InvalidArgument)?;
-        let ret = unsafe { sys::juice_add_remote_candidate(self.agent, s.as_ptr()) };
+        let ret = unsafe { sys::juice_add_remote_candidate(self.holder.agent, s.as_ptr()) };
         raw_retcode_to_result(ret)
     }
 
     /// Signal remote candidates exhausted
     pub fn set_remote_gathering_done(&self) -> Result<()> {
-        let ret = unsafe { sys::juice_set_remote_gathering_done(self.agent) };
+        let ret = unsafe { sys::juice_set_remote_gathering_done(self.holder.agent) };
         raw_retcode_to_result(ret)
     }
 
     /// Send packet to remote endpoint
     pub fn send(&self, data: &[u8]) -> Result<()> {
-        let ret = unsafe { sys::juice_send(self.agent, data.as_ptr() as _, data.len() as _) };
+        let ret =
+            unsafe { sys::juice_send(self.holder.agent, data.as_ptr() as _, data.len() as _) };
         raw_retcode_to_result(ret)
     }
 
+    /// Get selected candidates pair (local,remote)
     pub fn get_selected_candidates(&self) -> Result<(String, String)> {
         let mut local = vec![0; sys::JUICE_MAX_SDP_STRING_LEN as _];
         let mut remote = vec![0; sys::JUICE_MAX_SDP_STRING_LEN as _];
         let ret = unsafe {
             let res = sys::juice_get_selected_candidates(
-                self.agent,
+                self.holder.agent,
                 local.as_mut_ptr() as _,
                 local.len() as _,
                 remote.as_mut_ptr() as _,
@@ -152,7 +152,25 @@ impl Agent {
         };
         Ok(ret)
     }
+}
 
+pub(crate) struct Holder {
+    agent: *mut sys::juice_agent_t,
+    handler: Mutex<Box<Handler>>,
+}
+
+impl Drop for Holder {
+    fn drop(&mut self) {
+        unsafe { sys::juice_destroy(self.agent) }
+    }
+}
+
+// SAFETY: All juice calls protected by mutex internally and can be invoked from any thread
+unsafe impl Sync for Holder {}
+
+unsafe impl Send for Holder {}
+
+impl Holder {
     pub(crate) fn on_state_changed(&self, state: AgentState) {
         let mut h = self.handler.lock().unwrap();
         h.on_state_changed(state)
@@ -176,7 +194,7 @@ impl Agent {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Barrier;
+    use std::sync::{Arc, Barrier};
 
     use crate::agent_state::AgentState;
     use crate::Handler;
@@ -188,9 +206,9 @@ mod tests {
         crate::test_util::logger_init();
 
         let handler = Handler::default();
-        let agent = Builder::new(handler.to_box()).build();
+        let agent = Builder::new(handler.to_box()).build().unwrap();
 
-        assert_eq!(agent.state(), AgentState::Disconnected);
+        assert_eq!(agent.get_state(), AgentState::Disconnected);
         log::debug!(
             "local description \n\"{}\"",
             agent.get_local_description().unwrap()
@@ -214,16 +232,16 @@ mod tests {
             })
             .candidate_handler(|candidate| log::debug!("Local candidate: \"{}\"", candidate));
 
-        let agent = Builder::new(handler.to_box()).build();
+        let agent = Builder::new(handler.to_box()).build().unwrap();
 
-        assert_eq!(agent.state(), AgentState::Disconnected);
+        assert_eq!(agent.get_state(), AgentState::Disconnected);
         log::debug!(
             "local description \n\"{}\"",
             agent.get_local_description().unwrap()
         );
 
         agent.gather_candidates().unwrap();
-        assert_eq!(agent.state(), AgentState::Gathering);
+        assert_eq!(agent.get_state(), AgentState::Gathering);
 
         let _ = gathering_barrier.wait();
 
