@@ -1,6 +1,10 @@
 use crate::agent_state::AgentState;
 
 /// Closures based agent's event handler.
+///
+/// Any closure from given handler can be invoked in any thread, usually from internal dedicated
+/// libjuice thread.
+///
 /// # Example
 /// ```
 /// # use libjuice::Handler;
@@ -12,36 +16,36 @@ use crate::agent_state::AgentState;
 #[derive(Default)]
 pub struct Handler {
     /// ICE state change handler
-    on_state_change: Option<Box<dyn FnMut(AgentState)>>,
+    on_state_change: Option<Box<dyn FnMut(AgentState) + 'static + Send>>,
     /// Local ICE candidate handler
-    on_candidate: Option<Box<dyn FnMut(String)>>,
+    on_candidate: Option<Box<dyn FnMut(String) + 'static + Send>>,
     /// Gathering stage finish handler
-    on_gathering_done: Option<Box<dyn FnMut()>>,
+    on_gathering_done: Option<Box<dyn FnMut() + 'static + Send>>,
     /// Incoming packet
-    on_recv: Option<Box<dyn FnMut(&[u8])>>,
+    on_recv: Option<Box<dyn FnMut(&[u8]) + 'static + Send>>,
 }
 
 impl Handler {
     /// Set ICE state change handler
-    pub fn state_handler(mut self, f: impl FnMut(AgentState) + 'static) -> Self {
+    pub fn state_handler(mut self, f: impl FnMut(AgentState) + 'static + Send) -> Self {
         self.on_state_change = Some(Box::new(f));
         self
     }
 
     /// Set local candidate handler
-    pub fn candidate_handler(mut self, f: impl FnMut(String) + 'static) -> Self {
+    pub fn candidate_handler(mut self, f: impl FnMut(String) + 'static + Send) -> Self {
         self.on_candidate = Some(Box::new(f));
         self
     }
 
     /// Set gathering finish handler
-    pub fn gathering_finished_handler(mut self, f: impl FnMut() + 'static) -> Self {
+    pub fn gathering_finished_handler(mut self, f: impl FnMut() + 'static + Send) -> Self {
         self.on_gathering_done = Some(Box::new(f));
         self
     }
 
     /// Set incoming packet handler
-    pub fn recv_handler(mut self, f: impl FnMut(&[u8]) + 'static) -> Self {
+    pub fn recv_handler(mut self, f: impl FnMut(&[u8]) + 'static + Send) -> Self {
         self.on_recv = Some(Box::new(f));
         self
     }
