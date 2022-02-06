@@ -63,6 +63,15 @@ fn connectivity_no_trickle() {
     assert_eq!(first.state(), AgentState::Completed);
     assert_eq!(second.state(), AgentState::Completed);
 
+    log::info!(
+        "first selected candidates: {:?}",
+        first.get_selected_candidates()
+    );
+    log::info!(
+        "second selected candidates: {:?}",
+        second.get_selected_candidates()
+    );
+
     first.send("hello".as_bytes()).unwrap();
     assert_eq!(
         second_rx.recv_timeout(Duration::from_secs(1)),
@@ -185,6 +194,15 @@ fn connectivity_trickle() {
 
     assert_eq!(first.state(), AgentState::Completed);
     assert_eq!(second.state(), AgentState::Completed);
+
+    log::info!(
+        "first selected candidates: {:?}",
+        first.get_selected_candidates()
+    );
+    log::info!(
+        "second selected candidates: {:?}",
+        second.get_selected_candidates()
+    );
 
     first.send("hello".as_bytes()).unwrap();
     assert_eq!(

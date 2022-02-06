@@ -1,6 +1,6 @@
 use std::ffi::{CStr, CString};
 use std::marker::PhantomData;
-use std::os::raw::{c_char, c_int};
+use std::os::raw::c_int;
 use std::ptr;
 use std::sync::{Arc, Mutex};
 
@@ -88,13 +88,10 @@ impl Agent {
     }
 
     pub fn get_local_description(&self) -> Result<String> {
-        let mut buf: Vec<c_char> = vec![0; sys::JUICE_MAX_SDP_STRING_LEN as usize];
+        let mut buf = vec![0; sys::JUICE_MAX_SDP_STRING_LEN as _];
         let res = unsafe {
-            let res = sys::juice_get_local_description(
-                self.agent,
-                buf.as_mut_ptr(),
-                buf.len() as sys::size_t,
-            );
+            let res =
+                sys::juice_get_local_description(self.agent, buf.as_mut_ptr(), buf.len() as _);
             let _ = raw_retcode_to_result(res)?;
             let s = CStr::from_ptr(buf.as_mut_ptr());
             String::from_utf8_lossy(s.to_bytes())
@@ -132,6 +129,28 @@ impl Agent {
     pub fn send(&self, data: &[u8]) -> Result<()> {
         let ret = unsafe { sys::juice_send(self.agent, data.as_ptr() as _, data.len() as _) };
         raw_retcode_to_result(ret)
+    }
+
+    pub fn get_selected_candidates(&self) -> Result<(String, String)> {
+        let mut local = vec![0; sys::JUICE_MAX_SDP_STRING_LEN as _];
+        let mut remote = vec![0; sys::JUICE_MAX_SDP_STRING_LEN as _];
+        let ret = unsafe {
+            let res = sys::juice_get_selected_candidates(
+                self.agent,
+                local.as_mut_ptr() as _,
+                local.len() as _,
+                remote.as_mut_ptr() as _,
+                remote.len() as _,
+            );
+            let _ = raw_retcode_to_result(res)?;
+            let l = CStr::from_ptr(local.as_mut_ptr());
+            let r = CStr::from_ptr(remote.as_mut_ptr());
+            (
+                String::from_utf8_lossy(l.to_bytes()).to_string(),
+                String::from_utf8_lossy(r.to_bytes()).to_string(),
+            )
+        };
+        Ok(ret)
     }
 
     pub(crate) fn on_state_changed(&self, state: AgentState) {
