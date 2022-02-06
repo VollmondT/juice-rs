@@ -18,7 +18,12 @@ fn main() {
     config.build();
 
     // Link static libjuice
-    println!("cargo:rustc-link-search=native={}/build", out_dir);
+    let path = if cfg!(windows) {
+        format!("{}/build/{}", out_dir, config.get_profile())
+    } else {
+        format!("{}/build", out_dir)
+    };
+    println!("cargo:rustc-link-search=native={}", path);
     println!("cargo:rustc-link-lib=static=juice-static");
 
     let bindings = bindgen::Builder::default()
