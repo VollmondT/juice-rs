@@ -65,10 +65,11 @@ unsafe extern "C" fn on_gathering_done(_: *mut sys::juice_agent, user_ptr: *mut 
 
 unsafe extern "C" fn on_recv(
     _: *mut libjuice_sys::juice_agent,
-    _data: *const i8,
-    _len: u64,
+    data: *const i8,
+    len: u64,
     user_ptr: *mut std::ffi::c_void,
 ) {
     let agent = &mut *(user_ptr as *mut Agent);
-    agent.on_recv()
+    let packet = core::slice::from_raw_parts(data as _, len as _);
+    agent.on_recv(packet)
 }

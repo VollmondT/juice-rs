@@ -18,7 +18,7 @@ pub struct Handler {
     /// Gathering stage finish handler
     on_gathering_done: Option<Box<dyn FnMut()>>,
     /// Incoming packet
-    on_recv: Option<Box<dyn FnMut()>>,
+    on_recv: Option<Box<dyn FnMut(&[u8])>>,
 }
 
 impl Handler {
@@ -37,6 +37,12 @@ impl Handler {
     /// Set gathering finish handler
     pub fn gathering_finished_handler(mut self, f: impl FnMut() + 'static) -> Self {
         self.on_gathering_done = Some(Box::new(f));
+        self
+    }
+
+    /// Set incoming packet handler
+    pub fn recv_handler(mut self, f: impl FnMut(&[u8]) + 'static) -> Self {
+        self.on_recv = Some(Box::new(f));
         self
     }
 
@@ -63,9 +69,9 @@ impl Handler {
         }
     }
 
-    pub(crate) fn on_recv(&mut self) {
+    pub(crate) fn on_recv(&mut self, packet: &[u8]) {
         if let Some(f) = &mut self.on_recv {
-            f()
+            f(packet)
         }
     }
 }
