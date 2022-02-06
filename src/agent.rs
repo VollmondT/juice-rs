@@ -76,6 +76,8 @@ impl Drop for Agent {
 // SAFETY: All juice calls protected by mutex internally and can be invoked from any thread
 unsafe impl Sync for Agent {}
 
+unsafe impl Send for Agent {}
+
 impl Agent {
     pub fn state(&self) -> AgentState {
         unsafe {
@@ -110,6 +112,19 @@ impl Agent {
     pub fn set_remote_description(&self, sdp: String) -> Result<()> {
         let s = CString::new(sdp).map_err(|_| AgentError::InvalidArgument)?;
         let ret = unsafe { sys::juice_set_remote_description(self.agent, s.as_ptr()) };
+        raw_retcode_to_result(ret)
+    }
+
+    /// Add remote candidate
+    pub fn add_remote_candidate(&self, sdp: String) -> Result<()> {
+        let s = CString::new(sdp).map_err(|_| AgentError::InvalidArgument)?;
+        let ret = unsafe { sys::juice_add_remote_candidate(self.agent, s.as_ptr()) };
+        raw_retcode_to_result(ret)
+    }
+
+    /// Signal remote candidates exhausted
+    pub fn set_remote_gathering_done(&self) -> Result<()> {
+        let ret = unsafe { sys::juice_set_remote_gathering_done(self.agent) };
         raw_retcode_to_result(ret)
     }
 
@@ -180,7 +195,7 @@ mod tests {
             })
             .candidate_handler(|candidate| log::debug!("Local candidate: \"{}\"", candidate));
 
-        let mut agent = Builder::new(handler.to_box()).build();
+        let agent = Builder::new(handler.to_box()).build();
 
         assert_eq!(agent.state(), AgentState::Disconnected);
         log::debug!(
