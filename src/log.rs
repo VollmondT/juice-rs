@@ -37,7 +37,7 @@ unsafe extern "C" fn log_callback(
     }
 }
 
-/// Init logger singletone
+/// Init logger singleton
 #[allow(clippy::no_effect)]
 pub(crate) fn ensure_logging() {
     *INIT_LOGGING;
