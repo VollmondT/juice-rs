@@ -3,8 +3,7 @@ use std::sync::{Arc, Barrier};
 use std::thread::{sleep, spawn};
 use std::time::Duration;
 
-use libjuice::agent_state::AgentState;
-use libjuice::{Agent, Builder, Handler};
+use libjuice::{Agent, AgentState, Handler};
 
 include!("../src/test_util.rs");
 
@@ -29,7 +28,7 @@ fn connectivity_no_trickle() {
             let _ = first_tx.send(packet.to_vec());
         });
 
-    let first = Builder::new(first_handler.to_box()).build().unwrap();
+    let first = Agent::builder(first_handler).build().unwrap();
 
     let (second_tx, second_rx) = channel();
     let second_handler = Handler::default()
@@ -45,7 +44,10 @@ fn connectivity_no_trickle() {
             log::debug!("second received {:?}", packet);
             let _ = second_tx.send(packet.to_vec());
         });
-    let second = Builder::new(second_handler.to_box()).build().unwrap();
+    let second = Agent::builder(second_handler)
+        .set_port_range(5000, 5010)
+        .build()
+        .unwrap();
 
     first.gather_candidates().unwrap();
     second.gather_candidates().unwrap();
@@ -148,7 +150,7 @@ fn connectivity_trickle() {
             }
         });
 
-    let first = Arc::new(Builder::new(first_handler.to_box()).build().unwrap());
+    let first = Arc::new(Agent::builder(first_handler).build().unwrap());
 
     let (second_tx, second_rx) = channel();
     let (second_candidate_tx, second_candidate_rx) = channel();
@@ -172,7 +174,7 @@ fn connectivity_trickle() {
             let _ = second_candidate_tx.send(TrickleEvent::Candidate(sdp));
         });
 
-    let second = Arc::new(Builder::new(second_handler.to_box()).build().unwrap());
+    let second = Arc::new(Agent::builder(second_handler).build().unwrap());
 
     let handle1 = {
         let first = first.clone();

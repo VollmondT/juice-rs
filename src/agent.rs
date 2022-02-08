@@ -1,4 +1,5 @@
 use std::ffi::{CStr, CString};
+use std::marker::PhantomData;
 use std::os::raw::c_int;
 use std::ptr;
 use std::sync::Mutex;
@@ -10,6 +11,7 @@ use crate::agent_error::AgentError;
 use crate::agent_state::AgentState;
 use crate::ice_hander::Handler;
 use crate::log::ensure_logging;
+use crate::stun_server::StunServer;
 
 type Result<T> = std::result::Result<T, AgentError>;
 
@@ -26,21 +28,31 @@ fn raw_retcode_to_result(retcode: c_int) -> Result<()> {
 
 /// Agent builder.
 pub struct Builder {
-    stun_server: String,
-    stun_server_port: u16,
+    stun_server: Option<StunServer>,
     port_range: Option<(u16, u16)>,
-    handler: Box<Handler>,
+    handler: Handler,
 }
 
 impl Builder {
     /// Create new builder with given handler
-    pub fn new(handler: Box<Handler>) -> Self {
+    fn new(handler: Handler) -> Self {
         Builder {
-            stun_server: String::from("stun.l.google.com"),
-            stun_server_port: 19302,
+            stun_server: None,
             port_range: None,
             handler,
         }
+    }
+
+    /// Set alternative stun server (default is "stun.l.google.com:19302")
+    pub fn set_stun(mut self, host: String, port: u16) -> Self {
+        self.stun_server = Some(StunServer::new(host, port).unwrap());
+        self
+    }
+
+    /// Set port range
+    pub fn set_port_range(mut self, begin: u16, end: u16) -> Self {
+        self.port_range = Some((begin, end));
+        self
     }
 
     /// Build agent
@@ -50,11 +62,11 @@ impl Builder {
         let mut holder = Box::new(Holder {
             agent: ptr::null_mut(),
             handler: Mutex::new(self.handler),
+            _marker: PhantomData::default(),
         });
 
         let cfg = Config {
-            stun_server_host: CString::new(self.stun_server).expect("invalid stun server host"),
-            stun_server_port: self.stun_server_port,
+            stun_server: self.stun_server.unwrap_or_default(),
             parent: &holder as _,
             port_range: self.port_range,
         };
@@ -68,10 +80,17 @@ impl Builder {
     }
 }
 
+/// ICE agent.
 pub struct Agent {
     holder: Box<Holder>,
 }
+
 impl Agent {
+    /// Create agent builder
+    pub fn builder(h: Handler) -> Builder {
+        Builder::new(h)
+    }
+
     /// Get ICE state
     pub fn get_state(&self) -> AgentState {
         unsafe {
@@ -178,7 +197,8 @@ impl Agent {
 
 pub(crate) struct Holder {
     agent: *mut sys::juice_agent_t,
-    handler: Mutex<Box<Handler>>,
+    handler: Mutex<Handler>,
+    _marker: PhantomData<(sys::juice_agent, std::marker::PhantomPinned)>,
 }
 
 impl Drop for Holder {
@@ -228,7 +248,7 @@ mod tests {
         crate::test_util::logger_init();
 
         let handler = Handler::default();
-        let agent = Builder::new(handler.to_box()).build().unwrap();
+        let agent = Builder::new(handler).build().unwrap();
 
         assert_eq!(agent.get_state(), AgentState::Disconnected);
         log::debug!(
@@ -254,7 +274,7 @@ mod tests {
             })
             .candidate_handler(|candidate| log::debug!("Local candidate: \"{}\"", candidate));
 
-        let agent = Builder::new(handler.to_box()).build().unwrap();
+        let agent = Builder::new(handler).build().unwrap();
 
         assert_eq!(agent.get_state(), AgentState::Disconnected);
         log::debug!(

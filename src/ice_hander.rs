@@ -1,6 +1,6 @@
 use crate::agent_state::AgentState;
 
-/// Closures based agent's event handler.
+/// Closures based event handler.
 ///
 /// Any closure from given handler can be invoked in any thread, usually from internal dedicated
 /// libjuice thread.
@@ -8,53 +8,61 @@ use crate::agent_state::AgentState;
 /// # Example
 /// ```
 /// # use libjuice::Handler;
-/// let h: Box<Handler> = Handler::default()
+/// let h: Handler = Handler::default()
 ///     .state_handler(|s| println!("State changed to: {:?}", s))
-///     .candidate_handler(|c| println!("Local candidate: {:?}", c))
-///     .to_box();
+///     .candidate_handler(|c| println!("Local candidate: {:?}", c));
 /// ```
 #[derive(Default)]
 pub struct Handler {
     /// ICE state change handler
-    on_state_change: Option<Box<dyn FnMut(AgentState) + 'static + Send>>,
+    on_state_change: Option<Box<dyn FnMut(AgentState) + Send + 'static>>,
     /// Local ICE candidate handler
-    on_candidate: Option<Box<dyn FnMut(String) + 'static + Send>>,
+    on_candidate: Option<Box<dyn FnMut(String) + Send + 'static>>,
     /// Gathering stage finish handler
-    on_gathering_done: Option<Box<dyn FnMut() + 'static + Send>>,
+    on_gathering_done: Option<Box<dyn FnMut() + Send + 'static>>,
     /// Incoming packet
-    on_recv: Option<Box<dyn FnMut(&[u8]) + 'static + Send>>,
-    /// Do not allow move
-    _pin: std::marker::PhantomPinned,
+    on_recv: Option<Box<dyn FnMut(&[u8]) + Send + 'static>>,
 }
 
 impl Handler {
     /// Set ICE state change handler
-    pub fn state_handler(mut self, f: impl FnMut(AgentState) + 'static + Send) -> Self {
+    pub fn state_handler<F>(mut self, f: F) -> Self
+    where
+        F: FnMut(AgentState),
+        F: Send + Sync + 'static,
+    {
         self.on_state_change = Some(Box::new(f));
         self
     }
 
     /// Set local candidate handler
-    pub fn candidate_handler(mut self, f: impl FnMut(String) + 'static + Send) -> Self {
+    pub fn candidate_handler<F>(mut self, f: F) -> Self
+    where
+        F: FnMut(String),
+        F: Send + 'static,
+    {
         self.on_candidate = Some(Box::new(f));
         self
     }
 
     /// Set gathering finish handler
-    pub fn gathering_finished_handler(mut self, f: impl FnMut() + 'static + Send) -> Self {
+    pub fn gathering_finished_handler<F>(mut self, f: F) -> Self
+    where
+        F: FnMut(),
+        F: Send + 'static,
+    {
         self.on_gathering_done = Some(Box::new(f));
         self
     }
 
     /// Set incoming packet handler
-    pub fn recv_handler(mut self, f: impl FnMut(&[u8]) + 'static + Send) -> Self {
+    pub fn recv_handler<F>(mut self, f: F) -> Self
+    where
+        F: FnMut(&[u8]),
+        F: Send + 'static,
+    {
         self.on_recv = Some(Box::new(f));
         self
-    }
-
-    /// Convert to box.
-    pub fn to_box(self) -> Box<Self> {
-        Box::new(self)
     }
 
     pub(crate) fn on_state_changed(&mut self, state: AgentState) {

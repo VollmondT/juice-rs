@@ -1,14 +1,13 @@
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{c_void, CStr};
 use std::ptr;
 
 use libjuice_sys as sys;
 
 use crate::agent::Holder;
+use crate::stun_server::StunServer;
 
-#[derive(Clone)]
 pub(crate) struct Config<'a> {
-    pub(crate) stun_server_host: CString,
-    pub(crate) stun_server_port: u16,
+    pub(crate) stun_server: StunServer,
     pub(crate) parent: &'a crate::agent::Holder,
     pub(crate) port_range: Option<(u16, u16)>,
 }
@@ -17,8 +16,8 @@ impl Config<'_> {
     pub(crate) fn as_raw(&self) -> sys::juice_config {
         let port_range = &self.port_range.unwrap_or((0, 0));
         sys::juice_config {
-            stun_server_host: self.stun_server_host.as_ptr(),
-            stun_server_port: self.stun_server_port,
+            stun_server_host: self.stun_server.0.as_ptr(),
+            stun_server_port: self.stun_server.1,
             turn_servers: ptr::null_mut(), // TODO
             turn_servers_count: 0,         // TODO
             bind_address: ptr::null(),     // TODO
