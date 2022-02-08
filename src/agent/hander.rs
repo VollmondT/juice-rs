@@ -1,4 +1,4 @@
-use crate::agent_state::AgentState;
+use crate::agent::state::AgentState;
 
 /// Closures based event handler.
 ///

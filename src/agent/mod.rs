@@ -6,12 +6,19 @@ use std::sync::Mutex;
 
 use libjuice_sys as sys;
 
-use crate::agent_config::Config;
-use crate::agent_error::AgentError;
-use crate::agent_state::AgentState;
-use crate::ice_hander::Handler;
+use config::Config;
+use error::AgentError;
+use hander::Handler;
+use state::AgentState;
+use stun_server::StunServer;
+
 use crate::log::ensure_logging;
-use crate::stun_server::StunServer;
+
+mod config;
+pub mod error;
+pub mod hander;
+pub mod state;
+mod stun_server;
 
 type Result<T> = std::result::Result<T, AgentError>;
 
@@ -238,7 +245,7 @@ impl Holder {
 mod tests {
     use std::sync::{Arc, Barrier};
 
-    use crate::agent_state::AgentState;
+    use crate::agent::state::AgentState;
     use crate::Handler;
 
     use super::*;
@@ -248,7 +255,7 @@ mod tests {
         crate::test_util::logger_init();
 
         let handler = Handler::default();
-        let agent = Builder::new(handler).build().unwrap();
+        let agent = Agent::builder(handler).build().unwrap();
 
         assert_eq!(agent.get_state(), AgentState::Disconnected);
         log::debug!(
@@ -274,7 +281,7 @@ mod tests {
             })
             .candidate_handler(|candidate| log::debug!("Local candidate: \"{}\"", candidate));
 
-        let agent = Builder::new(handler).build().unwrap();
+        let agent = Agent::builder(handler).build().unwrap();
 
         assert_eq!(agent.get_state(), AgentState::Disconnected);
         log::debug!(

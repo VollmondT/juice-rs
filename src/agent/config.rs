@@ -3,8 +3,8 @@ use std::ptr;
 
 use libjuice_sys as sys;
 
+use crate::agent::stun_server::StunServer;
 use crate::agent::Holder;
-use crate::stun_server::StunServer;
 
 pub(crate) struct Config<'a> {
     pub(crate) stun_server: StunServer,
