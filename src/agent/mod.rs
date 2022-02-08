@@ -7,28 +7,27 @@ use std::sync::Mutex;
 use libjuice_sys as sys;
 
 use config::Config;
-use error::AgentError;
 use hander::Handler;
 use state::AgentState;
 use stun_server::StunServer;
 
+use crate::error::Error;
 use crate::log::ensure_logging;
 
 mod config;
-pub mod error;
 pub mod hander;
 pub mod state;
 mod stun_server;
 
-type Result<T> = std::result::Result<T, AgentError>;
+type Result<T> = std::result::Result<T, Error>;
 
 /// Convert c function retcode to result
 fn raw_retcode_to_result(retcode: c_int) -> Result<()> {
     match retcode {
         0 => Ok(()),
-        sys::JUICE_ERR_INVALID => Err(AgentError::InvalidArgument),
-        sys::JUICE_ERR_FAILED => Err(AgentError::Failed),
-        sys::JUICE_ERR_NOT_AVAIL => Err(AgentError::NotAvailable),
+        sys::JUICE_ERR_INVALID => Err(Error::InvalidArgument),
+        sys::JUICE_ERR_FAILED => Err(Error::Failed),
+        sys::JUICE_ERR_NOT_AVAIL => Err(Error::NotAvailable),
         _ => unreachable!(),
     }
 }
@@ -79,7 +78,7 @@ impl Builder {
         };
         let ptr = unsafe { sys::juice_create(&cfg.as_raw() as *const _) };
         if ptr.is_null() {
-            Err(AgentError::Failed)
+            Err(Error::Failed)
         } else {
             holder.agent = ptr;
             Ok(Agent { holder })
@@ -131,14 +130,14 @@ impl Agent {
 
     /// Set remote description
     pub fn set_remote_description(&self, sdp: String) -> Result<()> {
-        let s = CString::new(sdp).map_err(|_| AgentError::InvalidArgument)?;
+        let s = CString::new(sdp).map_err(|_| Error::InvalidArgument)?;
         let ret = unsafe { sys::juice_set_remote_description(self.holder.agent, s.as_ptr()) };
         raw_retcode_to_result(ret)
     }
 
     /// Add remote candidate
     pub fn add_remote_candidate(&self, sdp: String) -> Result<()> {
-        let s = CString::new(sdp).map_err(|_| AgentError::InvalidArgument)?;
+        let s = CString::new(sdp).map_err(|_| Error::InvalidArgument)?;
         let ret = unsafe { sys::juice_add_remote_candidate(self.holder.agent, s.as_ptr()) };
         raw_retcode_to_result(ret)
     }
