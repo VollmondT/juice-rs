@@ -7,7 +7,7 @@ use crate::agent_state::AgentState;
 ///
 /// # Example
 /// ```
-/// # use libjuice::Handler;
+/// # use libjuice_rs::Handler;
 /// let h: Handler = Handler::default()
 ///     .state_handler(|s| println!("State changed to: {:?}", s))
 ///     .candidate_handler(|c| println!("Local candidate: {:?}", c));

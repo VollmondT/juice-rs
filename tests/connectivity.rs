@@ -3,7 +3,7 @@ use std::sync::{Arc, Barrier};
 use std::thread::{sleep, spawn};
 use std::time::Duration;
 
-use libjuice::{Agent, AgentState, Handler};
+use libjuice_rs::{Agent, AgentState, Handler};
 
 include!("../src/test_util.rs");
 
