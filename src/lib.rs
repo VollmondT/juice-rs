@@ -1,8 +1,8 @@
 extern crate core;
 
-pub use agent::{hander::Handler, state::AgentState, Agent, Builder};
-pub use error::Error;
-pub use server::{Builder as ServerBuilder, Credentials, Server};
+pub use agent::{handler::Handler, Agent, Builder, State};
+pub use error::{Error, Result};
+pub use server::{Builder as ServerBuilder, Credentials as ServerCredentials, Server};
 
 mod agent;
 mod error;

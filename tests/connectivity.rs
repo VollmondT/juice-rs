@@ -3,7 +3,7 @@ use std::sync::{Arc, Barrier};
 use std::thread::{sleep, spawn};
 use std::time::Duration;
 
-use libjuice_rs::{Agent, AgentState, Handler};
+use libjuice_rs::{Agent, Handler, State};
 
 include!("../src/test_util.rs");
 
@@ -62,8 +62,8 @@ fn connectivity_no_trickle() {
 
     sleep(Duration::from_secs(2));
 
-    assert_eq!(first.get_state(), AgentState::Completed);
-    assert_eq!(second.get_state(), AgentState::Completed);
+    assert_eq!(first.get_state(), State::Completed);
+    assert_eq!(second.get_state(), State::Completed);
 
     log::info!(
         "first selected candidates: {:?}",
@@ -202,8 +202,8 @@ fn connectivity_trickle() {
 
     sleep(Duration::from_secs(2));
 
-    assert_eq!(first.get_state(), AgentState::Completed);
-    assert_eq!(second.get_state(), AgentState::Completed);
+    assert_eq!(first.get_state(), State::Completed);
+    assert_eq!(second.get_state(), State::Completed);
 
     log::info!(
         "first selected candidates: {:?}",

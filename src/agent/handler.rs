@@ -1,4 +1,4 @@
-use crate::agent::state::AgentState;
+use crate::agent::State;
 
 /// Closures based event handler.
 ///
@@ -15,7 +15,7 @@ use crate::agent::state::AgentState;
 #[derive(Default)]
 pub struct Handler {
     /// ICE state change handler
-    on_state_change: Option<Box<dyn FnMut(AgentState) + Send + 'static>>,
+    on_state_change: Option<Box<dyn FnMut(State) + Send + 'static>>,
     /// Local ICE candidate handler
     on_candidate: Option<Box<dyn FnMut(String) + Send + 'static>>,
     /// Gathering stage finish handler
@@ -28,7 +28,7 @@ impl Handler {
     /// Set ICE state change handler
     pub fn state_handler<F>(mut self, f: F) -> Self
     where
-        F: FnMut(AgentState),
+        F: FnMut(State),
         F: Send + Sync + 'static,
     {
         self.on_state_change = Some(Box::new(f));
@@ -65,7 +65,7 @@ impl Handler {
         self
     }
 
-    pub(crate) fn on_state_changed(&mut self, state: AgentState) {
+    pub(crate) fn on_state_changed(&mut self, state: State) {
         if let Some(f) = &mut self.on_state_change {
             f(state)
         }

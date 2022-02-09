@@ -1,3 +1,6 @@
+mod config;
+pub mod handler;
+
 use std::ffi::{CStr, CString};
 use std::marker::PhantomData;
 use std::os::raw::c_int;
@@ -7,19 +10,11 @@ use std::sync::Mutex;
 use libjuice_sys as sys;
 
 use config::Config;
-use hander::Handler;
-use state::AgentState;
-use stun_server::StunServer;
+use handler::Handler;
 
 use crate::error::Error;
 use crate::log::ensure_logging;
-
-mod config;
-pub mod hander;
-pub mod state;
-mod stun_server;
-
-type Result<T> = std::result::Result<T, Error>;
+use crate::Result;
 
 /// Convert c function retcode to result
 fn raw_retcode_to_result(retcode: c_int) -> Result<()> {
@@ -62,7 +57,7 @@ impl Builder {
     }
 
     /// Build agent
-    pub fn build(self) -> Result<Agent> {
+    pub fn build(self) -> crate::Result<Agent> {
         ensure_logging();
 
         let mut holder = Box::new(Holder {
@@ -98,7 +93,7 @@ impl Agent {
     }
 
     /// Get ICE state
-    pub fn get_state(&self) -> AgentState {
+    pub fn get_state(&self) -> State {
         unsafe {
             sys::juice_get_state(self.holder.agent)
                 .try_into()
@@ -107,7 +102,7 @@ impl Agent {
     }
 
     /// Get local sdp
-    pub fn get_local_description(&self) -> Result<String> {
+    pub fn get_local_description(&self) -> crate::Result<String> {
         let mut buf = vec![0; sys::JUICE_MAX_SDP_STRING_LEN as _];
         let res = unsafe {
             let res = sys::juice_get_local_description(
@@ -123,40 +118,40 @@ impl Agent {
     }
 
     /// Start ICE candidates gathering
-    pub fn gather_candidates(&self) -> Result<()> {
+    pub fn gather_candidates(&self) -> crate::Result<()> {
         let ret = unsafe { sys::juice_gather_candidates(self.holder.agent) };
         raw_retcode_to_result(ret)
     }
 
     /// Set remote description
-    pub fn set_remote_description(&self, sdp: String) -> Result<()> {
+    pub fn set_remote_description(&self, sdp: String) -> crate::Result<()> {
         let s = CString::new(sdp).map_err(|_| Error::InvalidArgument)?;
         let ret = unsafe { sys::juice_set_remote_description(self.holder.agent, s.as_ptr()) };
         raw_retcode_to_result(ret)
     }
 
     /// Add remote candidate
-    pub fn add_remote_candidate(&self, sdp: String) -> Result<()> {
+    pub fn add_remote_candidate(&self, sdp: String) -> crate::Result<()> {
         let s = CString::new(sdp).map_err(|_| Error::InvalidArgument)?;
         let ret = unsafe { sys::juice_add_remote_candidate(self.holder.agent, s.as_ptr()) };
         raw_retcode_to_result(ret)
     }
 
     /// Signal remote candidates exhausted
-    pub fn set_remote_gathering_done(&self) -> Result<()> {
+    pub fn set_remote_gathering_done(&self) -> crate::Result<()> {
         let ret = unsafe { sys::juice_set_remote_gathering_done(self.holder.agent) };
         raw_retcode_to_result(ret)
     }
 
     /// Send packet to remote endpoint
-    pub fn send(&self, data: &[u8]) -> Result<()> {
+    pub fn send(&self, data: &[u8]) -> crate::Result<()> {
         let ret =
             unsafe { sys::juice_send(self.holder.agent, data.as_ptr() as _, data.len() as _) };
         raw_retcode_to_result(ret)
     }
 
     /// Get selected candidates pair (local,remote)
-    pub fn get_selected_candidates(&self) -> Result<(String, String)> {
+    pub fn get_selected_candidates(&self) -> crate::Result<(String, String)> {
         let mut local = vec![0; sys::JUICE_MAX_SDP_STRING_LEN as _];
         let mut remote = vec![0; sys::JUICE_MAX_SDP_STRING_LEN as _];
         let ret = unsafe {
@@ -178,7 +173,7 @@ impl Agent {
         Ok(ret)
     }
 
-    pub fn get_selected_addresses(&self) -> Result<(String, String)> {
+    pub fn get_selected_addresses(&self) -> crate::Result<(String, String)> {
         let mut local = vec![0; sys::JUICE_MAX_SDP_STRING_LEN as _];
         let mut remote = vec![0; sys::JUICE_MAX_SDP_STRING_LEN as _];
         let ret = unsafe {
@@ -219,7 +214,7 @@ unsafe impl Sync for Holder {}
 unsafe impl Send for Holder {}
 
 impl Holder {
-    pub(crate) fn on_state_changed(&self, state: AgentState) {
+    pub(crate) fn on_state_changed(&self, state: State) {
         let mut h = self.handler.lock().unwrap();
         h.on_state_changed(state)
     }
@@ -240,14 +235,53 @@ impl Holder {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum State {
+    Disconnected,
+    Gathering,
+    Connecting,
+    Connected,
+    Completed,
+    Failed,
+}
+
+impl TryFrom<sys::juice_state> for State {
+    type Error = ();
+
+    fn try_from(value: sys::juice_state) -> std::result::Result<Self, Self::Error> {
+        Ok(match value {
+            sys::juice_state_JUICE_STATE_DISCONNECTED => State::Disconnected,
+            sys::juice_state_JUICE_STATE_GATHERING => State::Gathering,
+            sys::juice_state_JUICE_STATE_CONNECTING => State::Connecting,
+            sys::juice_state_JUICE_STATE_CONNECTED => State::Connected,
+            sys::juice_state_JUICE_STATE_COMPLETED => State::Completed,
+            sys::juice_state_JUICE_STATE_FAILED => State::Failed,
+            _ => return Err(()),
+        })
+    }
+}
+
+/// Stun server (host:port)
+pub(crate) struct StunServer(pub(crate) CString, pub(crate) u16);
+
+impl Default for StunServer {
+    fn default() -> Self {
+        Self(CString::new("stun.l.google.com").unwrap(), 19302)
+    }
+}
+
+impl StunServer {
+    /// Construct from `std::String` and port value
+    pub(crate) fn new(host: String, port: u16) -> std::result::Result<Self, std::ffi::NulError> {
+        Ok(Self(CString::new(host)?, port))
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Barrier};
-
-    use crate::agent::state::AgentState;
-    use crate::Handler;
-
     use super::*;
+    use crate::Handler;
+    use std::sync::{Arc, Barrier};
 
     #[test]
     fn build() {
@@ -256,7 +290,7 @@ mod tests {
         let handler = Handler::default();
         let agent = Agent::builder(handler).build().unwrap();
 
-        assert_eq!(agent.get_state(), AgentState::Disconnected);
+        assert_eq!(agent.get_state(), State::Disconnected);
         log::debug!(
             "local description \n\"{}\"",
             agent.get_local_description().unwrap()
@@ -282,14 +316,14 @@ mod tests {
 
         let agent = Agent::builder(handler).build().unwrap();
 
-        assert_eq!(agent.get_state(), AgentState::Disconnected);
+        assert_eq!(agent.get_state(), State::Disconnected);
         log::debug!(
             "local description \n\"{}\"",
             agent.get_local_description().unwrap()
         );
 
         agent.gather_candidates().unwrap();
-        assert_eq!(agent.get_state(), AgentState::Gathering);
+        assert_eq!(agent.get_state(), State::Gathering);
 
         let _ = gathering_barrier.wait();
 

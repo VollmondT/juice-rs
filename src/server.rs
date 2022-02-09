@@ -1,22 +1,25 @@
-use std::ffi::{CString, NulError};
+use std::cmp::max;
+use std::ffi::CString;
 use std::marker::{PhantomData, PhantomPinned};
+use std::net::{IpAddr, SocketAddr};
 use std::ptr;
 
 use libjuice_sys as sys;
 
-use crate::Error;
+use crate::log::ensure_logging;
+use crate::{Error, Result};
 
 pub struct Credentials {
     username: CString,
     password: CString,
-    quota: i32,
+    quota: Option<i32>,
 }
 
 impl Credentials {
-    pub fn new<T: Into<Vec<u8>>>(username: T, password: T, quota: i32) -> Result<Self, NulError> {
+    pub fn new<T: Into<Vec<u8>>>(username: T, password: T, quota: Option<i32>) -> Result<Self> {
         Ok(Self {
-            username: CString::new(username)?,
-            password: CString::new(password)?,
+            username: CString::new(username).map_err(|_| Error::InvalidArgument)?,
+            password: CString::new(password).map_err(|_| Error::InvalidArgument)?,
             quota,
         })
     }
@@ -32,7 +35,7 @@ pub struct Builder {
     max_allocations: i32,
     max_peers: i32,
     relay_port_range: Option<(u16, u16)>,
-    realm: CString,
+    realm: Option<CString>,
 }
 
 /// TURN server.
@@ -42,19 +45,22 @@ pub struct Server {
 }
 
 impl Builder {
-    pub fn build(self) -> Result<Server, Error> {
+    /// Build TURN server.
+    pub fn build(self) -> Result<Server> {
+        ensure_logging();
+
         let mut credentials = self
             .credentials
             .iter()
             .map(|cred| sys::juice_server_credentials {
                 username: cred.username.as_ptr(),
                 password: cred.password.as_ptr(),
-                allocations_quota: cred.quota,
+                allocations_quota: cred.quota.unwrap_or_default(),
             })
             .collect::<Vec<_>>();
 
         let credentials = if credentials.is_empty() {
-            ptr::null_mut()
+            return Err(Error::InvalidArgument);
         } else {
             credentials.as_mut_ptr()
         };
@@ -73,6 +79,12 @@ impl Builder {
             .map(|v| v.as_ptr())
             .unwrap_or(ptr::null());
 
+        let realm = self
+            .realm
+            .as_ref()
+            .map(|v| v.as_ptr())
+            .unwrap_or(ptr::null());
+
         let config = sys::juice_server_config {
             credentials,
             credentials_count: self.credentials.len() as _,
@@ -83,10 +95,10 @@ impl Builder {
             port: self.port,
             relay_port_range_begin: port_range.0,
             relay_port_range_end: port_range.1,
-            realm: self.realm.as_ptr(),
+            realm,
         };
 
-        // finally create
+        // finally try to build
         let ptr = unsafe { sys::juice_server_create(&config as _) };
 
         if ptr.is_null() {
@@ -97,6 +109,58 @@ impl Builder {
                 _marker: Default::default(),
             })
         }
+    }
+
+    /// Set several credentials at once.
+    ///
+    /// This function will overwrite credentials list entirely. Alternatively, you can
+    /// sequentially call `Builder::add_credentials`
+    pub fn with_credentials<I: Iterator<Item = Credentials>>(
+        mut self,
+        credentials_list: I,
+    ) -> Self {
+        self.credentials = credentials_list.collect();
+        self
+    }
+
+    /// Append credentials to the list.
+    pub fn add_credentials(mut self, cred: Credentials) -> Self {
+        self.credentials.push(cred);
+        self
+    }
+
+    /// Bind to specific interface and port.
+    pub fn bind_address(mut self, addr: &SocketAddr) -> Self {
+        self.bind_address = Some(CString::new(addr.ip().to_string()).unwrap());
+        self.port = addr.port();
+        self
+    }
+
+    pub fn with_external_address(mut self, addr: &IpAddr) -> Self {
+        self.external_address = Some(CString::new(addr.to_string()).unwrap());
+        self
+    }
+
+    /// Set relayed port range.
+    pub fn with_port_range(mut self, begin: u16, end: u16) -> Self {
+        self.relay_port_range = Some((begin, end));
+        self
+    }
+
+    /// Set realm.
+    pub fn with_realm<T: Into<Vec<u8>>>(mut self, realm: T) -> Result<Self> {
+        self.realm = Some(CString::new(realm).map_err(|_| Error::InvalidArgument)?);
+        Ok(self)
+    }
+
+    pub fn with_allocations_limit(mut self, limit: u32) -> Self {
+        self.max_allocations = max(limit, i32::MAX as u32) as i32;
+        self
+    }
+
+    pub fn with_peers_limit(mut self, limit: u32) -> Self {
+        self.max_peers = max(limit, i32::MAX as u32) as i32;
+        self
     }
 }
 
@@ -119,5 +183,22 @@ impl Server {
 impl Drop for Server {
     fn drop(&mut self) {
         unsafe { sys::juice_server_destroy(self.server) }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build() {
+        crate::test_util::logger_init();
+        let creds = Credentials::new("a", "b", None).unwrap();
+
+        let _ = Server::builder()
+            .add_credentials(creds)
+            .build()
+            .ok()
+            .unwrap();
     }
 }

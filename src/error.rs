@@ -1,5 +1,7 @@
 use std::fmt::{Display, Formatter};
 
+pub type Result<T> = std::result::Result<T, Error>;
+
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Error {
     InvalidArgument,
