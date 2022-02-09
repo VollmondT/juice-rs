@@ -30,6 +30,7 @@ pub struct Builder {
     stun_server: Option<StunServer>,
     port_range: Option<(u16, u16)>,
     bind_address: Option<CString>,
+    turn_servers: Vec<TurnServer>,
     handler: Handler,
 }
 
@@ -40,6 +41,7 @@ impl Builder {
             stun_server: None,
             port_range: None,
             bind_address: None,
+            turn_servers: vec![],
             handler,
         }
     }
@@ -62,6 +64,22 @@ impl Builder {
         self
     }
 
+    /// Add TURN server
+    pub fn add_turn_server<T>(mut self, host: T, port: u16, user: T, pass: T) -> Result<Self>
+    where
+        T: Into<Vec<u8>>,
+    {
+        let server = TurnServer {
+            host: CString::new(host).map_err(|_| Error::InvalidArgument)?,
+            port,
+            username: CString::new(user).map_err(|_| Error::InvalidArgument)?,
+            password: CString::new(pass).map_err(|_| Error::InvalidArgument)?,
+        };
+        self.turn_servers.push(server);
+
+        Ok(self)
+    }
+
     /// Build agent
     pub fn build(self) -> crate::Result<Agent> {
         ensure_logging();
@@ -82,11 +100,28 @@ impl Builder {
             .map(|v| v.as_ptr())
             .unwrap_or(ptr::null());
 
+        let servers = self
+            .turn_servers
+            .iter()
+            .map(|turn| sys::juice_turn_server {
+                host: turn.host.as_ptr(),
+                port: turn.port,
+                username: turn.username.as_ptr(),
+                password: turn.password.as_ptr(),
+            })
+            .collect::<Vec<_>>();
+
+        let turn_servers = if servers.is_empty() {
+            (ptr::null(), 0)
+        } else {
+            (servers.as_ptr(), servers.len() as _)
+        };
+
         let config = &sys::juice_config {
             stun_server_host: stun_server.0.as_ptr(),
             stun_server_port: stun_server.1,
-            turn_servers: ptr::null_mut(), // TODO
-            turn_servers_count: 0,         // TODO
+            turn_servers: turn_servers.0 as _,
+            turn_servers_count: turn_servers.1,
             bind_address,
             local_port_range_begin: port_range.0,
             local_port_range_end: port_range.1,
@@ -288,7 +323,7 @@ impl TryFrom<sys::juice_state> for State {
 }
 
 /// Stun server (host:port)
-pub(crate) struct StunServer(CString, u16);
+struct StunServer(CString, u16);
 
 impl Default for StunServer {
     fn default() -> Self {
@@ -304,6 +339,14 @@ impl StunServer {
             port,
         ))
     }
+}
+
+/// Turn server
+struct TurnServer {
+    pub host: CString,
+    pub username: CString,
+    pub password: CString,
+    pub port: u16,
 }
 
 unsafe extern "C" fn on_state_changed(

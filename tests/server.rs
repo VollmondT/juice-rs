@@ -35,6 +35,8 @@ fn run_server(server: Server) {
 
     let first = Agent::builder(first_handler)
         .with_stun("127.0.0.1".into(), 3478)
+        .add_turn_server("127.0.0.1", server_port, USER, PASS)
+        .unwrap()
         .build()
         .unwrap();
 
@@ -53,6 +55,9 @@ fn run_server(server: Server) {
             let _ = second_tx.send(sdp);
         });
     let second = Agent::builder(second_handler)
+        .with_stun("127.0.0.1".into(), 3478)
+        .add_turn_server("127.0.0.1", server_port, USER, PASS)
+        .unwrap()
         .with_port_range(5000, 5010)
         .build()
         .unwrap();
@@ -64,7 +69,9 @@ fn run_server(server: Server) {
 
     let has_relayed = loop {
         if let Ok(candidate) = first_rx.try_recv() {
-            log::info!("first client candidate: {:?}", candidate);
+            if candidate.contains("typ relay") {
+                break true;
+            }
         } else {
             break false;
         }
@@ -74,7 +81,9 @@ fn run_server(server: Server) {
 
     let has_relayed = loop {
         if let Ok(candidate) = second_rx.try_recv() {
-            log::info!("second client candidate: {:?}", candidate);
+            if candidate.contains("typ relay") {
+                break true;
+            }
         } else {
             break false;
         }
