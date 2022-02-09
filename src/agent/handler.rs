@@ -2,7 +2,7 @@ use crate::agent::State;
 
 /// Closures based event handler.
 ///
-/// Any closure from given handler can be invoked in any thread, usually from internal dedicated
+/// Any closure from given handler can be invoked in any thread, usually from dedicated internal
 /// libjuice thread.
 ///
 /// # Example
@@ -10,7 +10,9 @@ use crate::agent::State;
 /// # use libjuice_rs::Handler;
 /// let h: Handler = Handler::default()
 ///     .state_handler(|s| println!("State changed to: {:?}", s))
-///     .candidate_handler(|c| println!("Local candidate: {:?}", c));
+///     .candidate_handler(|c| println!("Local candidate: {:?}", c))
+///     .gathering_done_handler(||println!("Gathering done!"))
+///     .recv_handler(|packet| println!("Received packet of length: {}", packet.len()));
 /// ```
 #[derive(Default)]
 pub struct Handler {
@@ -45,8 +47,8 @@ impl Handler {
         self
     }
 
-    /// Set gathering finish handler
-    pub fn gathering_finished_handler<F>(mut self, f: F) -> Self
+    /// Set gathering done handler
+    pub fn gathering_done_handler<F>(mut self, f: F) -> Self
     where
         F: FnMut(),
         F: Send + 'static,

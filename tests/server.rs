@@ -20,7 +20,7 @@ fn run_server(server: Server) {
 
     let (first_tx, first_rx) = channel();
     let first_handler = Handler::default()
-        .gathering_finished_handler({
+        .gathering_done_handler({
             let barrier = gathering_barrier.clone();
             move || {
                 log::info!("first agent finished gathering");
@@ -42,7 +42,7 @@ fn run_server(server: Server) {
 
     let (second_tx, second_rx) = channel();
     let second_handler = Handler::default()
-        .gathering_finished_handler({
+        .gathering_done_handler({
             let barrier = gathering_barrier.clone();
             move || {
                 log::info!("second agent finished gathering");

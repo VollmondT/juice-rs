@@ -1,3 +1,5 @@
+//! Embedded TURN server.
+
 use std::cmp::max;
 use std::ffi::CString;
 use std::marker::{PhantomData, PhantomPinned};
@@ -45,7 +47,7 @@ pub struct Server {
 }
 
 impl Builder {
-    /// Build TURN server.
+    /// Build [`Server`].
     pub fn build(self) -> Result<Server> {
         ensure_logging();
 
@@ -114,7 +116,7 @@ impl Builder {
     /// Set several credentials at once.
     ///
     /// This function will overwrite credentials list entirely. Alternatively, you can
-    /// sequentially call `Builder::add_credentials`
+    /// sequentially call [`Builder::add_credentials`]
     pub fn with_credentials<I: Iterator<Item = Credentials>>(
         mut self,
         credentials_list: I,

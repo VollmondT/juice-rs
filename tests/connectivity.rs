@@ -15,7 +15,7 @@ fn connectivity_no_trickle() {
 
     let (first_tx, first_rx) = channel();
     let first_handler = Handler::default()
-        .gathering_finished_handler({
+        .gathering_done_handler({
             let barrier = gathering_barrier.clone();
             move || {
                 log::info!("first agent finished gathering");
@@ -32,7 +32,7 @@ fn connectivity_no_trickle() {
 
     let (second_tx, second_rx) = channel();
     let second_handler = Handler::default()
-        .gathering_finished_handler({
+        .gathering_done_handler({
             let barrier = gathering_barrier.clone();
             move || {
                 log::info!("second agent finished gathering");
@@ -129,7 +129,7 @@ fn connectivity_trickle() {
     let (first_tx, first_rx) = channel();
     let (first_candidate_tx, first_candidate_rx) = channel();
     let first_handler = Handler::default()
-        .gathering_finished_handler({
+        .gathering_done_handler({
             let barrier = gathering_barrier.clone();
             let first_candidate_tx = first_candidate_tx.clone();
             move || {
@@ -161,7 +161,7 @@ fn connectivity_trickle() {
     let (second_tx, second_rx) = channel();
     let (second_candidate_tx, second_candidate_rx) = channel();
     let second_handler = Handler::default()
-        .gathering_finished_handler({
+        .gathering_done_handler({
             let barrier = gathering_barrier.clone();
             let second_candidate_tx = second_candidate_tx.clone();
             move || {

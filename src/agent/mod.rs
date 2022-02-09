@@ -1,3 +1,5 @@
+//! ICE Agent.
+
 pub mod handler;
 
 use std::ffi::{CStr, CString};
@@ -332,7 +334,7 @@ impl Default for StunServer {
 }
 
 impl StunServer {
-    /// Construct from `std::String` and port value
+    /// Construct from host and port value
     fn new<T: Into<Vec<u8>>>(host: T, port: u16) -> Result<Self> {
         Ok(Self(
             CString::new(host).map_err(|_| Error::InvalidArgument)?,
@@ -418,7 +420,7 @@ mod tests {
 
         let handler = Handler::default()
             .state_handler(|state| log::debug!("State changed to: {:?}", state))
-            .gathering_finished_handler({
+            .gathering_done_handler({
                 let barrier = gathering_barrier.clone();
                 move || {
                     log::debug!("Gathering finished");
