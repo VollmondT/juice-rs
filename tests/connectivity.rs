@@ -45,7 +45,7 @@ fn connectivity_no_trickle() {
             let _ = second_tx.send(packet.to_vec());
         });
     let second = Agent::builder(second_handler)
-        .set_port_range(5000, 5010)
+        .with_port_range(5000, 5010)
         .build()
         .unwrap();
 
@@ -150,7 +150,13 @@ fn connectivity_trickle() {
             }
         });
 
-    let first = Arc::new(Agent::builder(first_handler).build().unwrap());
+    let bind = "127.0.0.1".parse().unwrap();
+    let first = Arc::new(
+        Agent::builder(first_handler)
+            .with_bind_address(&bind)
+            .build()
+            .unwrap(),
+    );
 
     let (second_tx, second_rx) = channel();
     let (second_candidate_tx, second_candidate_rx) = channel();
@@ -202,8 +208,14 @@ fn connectivity_trickle() {
 
     sleep(Duration::from_secs(2));
 
-    assert_eq!(first.get_state(), State::Completed);
-    assert_eq!(second.get_state(), State::Completed);
+    assert!(matches!(
+        first.get_state(),
+        State::Connected | State::Completed
+    ));
+    assert!(matches!(
+        second.get_state(),
+        State::Connected | State::Completed
+    ));
 
     log::info!(
         "first selected candidates: {:?}",

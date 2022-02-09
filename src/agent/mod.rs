@@ -1,16 +1,14 @@
-mod config;
 pub mod handler;
 
 use std::ffi::{CStr, CString};
 use std::marker::PhantomData;
+use std::net::IpAddr;
 use std::os::raw::c_int;
 use std::ptr;
 use std::sync::Mutex;
 
+pub use handler::Handler;
 use libjuice_sys as sys;
-
-use config::Config;
-use handler::Handler;
 
 use crate::error::Error;
 use crate::log::ensure_logging;
@@ -31,6 +29,7 @@ fn raw_retcode_to_result(retcode: c_int) -> Result<()> {
 pub struct Builder {
     stun_server: Option<StunServer>,
     port_range: Option<(u16, u16)>,
+    bind_address: Option<CString>,
     handler: Handler,
 }
 
@@ -40,19 +39,26 @@ impl Builder {
         Builder {
             stun_server: None,
             port_range: None,
+            bind_address: None,
             handler,
         }
     }
 
     /// Set alternative stun server (default is "stun.l.google.com:19302")
-    pub fn set_stun(mut self, host: String, port: u16) -> Self {
+    pub fn with_stun(mut self, host: String, port: u16) -> Self {
         self.stun_server = Some(StunServer::new(host, port).unwrap());
         self
     }
 
     /// Set port range
-    pub fn set_port_range(mut self, begin: u16, end: u16) -> Self {
+    pub fn with_port_range(mut self, begin: u16, end: u16) -> Self {
         self.port_range = Some((begin, end));
+        self
+    }
+
+    /// Bind to specific address
+    pub fn with_bind_address(mut self, addr: &IpAddr) -> Self {
+        self.bind_address = Some(CString::new(addr.to_string()).unwrap()); // can't fail
         self
     }
 
@@ -66,12 +72,32 @@ impl Builder {
             _marker: PhantomData::default(),
         });
 
-        let cfg = Config {
-            stun_server: self.stun_server.unwrap_or_default(),
-            parent: &holder as _,
-            port_range: self.port_range,
+        // [0..0] == no range
+        let port_range = self.port_range.unwrap_or((0, 0));
+        // default is google
+        let stun_server = self.stun_server.unwrap_or_default();
+        let bind_address = self
+            .bind_address
+            .as_ref()
+            .map(|v| v.as_ptr())
+            .unwrap_or(ptr::null());
+
+        let config = &sys::juice_config {
+            stun_server_host: stun_server.0.as_ptr(),
+            stun_server_port: stun_server.1,
+            turn_servers: ptr::null_mut(), // TODO
+            turn_servers_count: 0,         // TODO
+            bind_address,
+            local_port_range_begin: port_range.0,
+            local_port_range_end: port_range.1,
+            cb_state_changed: Some(on_state_changed),
+            cb_candidate: Some(on_candidate),
+            cb_gathering_done: Some(on_gathering_done),
+            cb_recv: Some(on_recv),
+            user_ptr: holder.as_mut() as *mut Holder as _,
         };
-        let ptr = unsafe { sys::juice_create(&cfg.as_raw() as *const _) };
+
+        let ptr = unsafe { sys::juice_create(config as _) };
         if ptr.is_null() {
             Err(Error::Failed)
         } else {
@@ -262,7 +288,7 @@ impl TryFrom<sys::juice_state> for State {
 }
 
 /// Stun server (host:port)
-pub(crate) struct StunServer(pub(crate) CString, pub(crate) u16);
+pub(crate) struct StunServer(CString, u16);
 
 impl Default for StunServer {
     fn default() -> Self {
@@ -272,9 +298,53 @@ impl Default for StunServer {
 
 impl StunServer {
     /// Construct from `std::String` and port value
-    pub(crate) fn new(host: String, port: u16) -> std::result::Result<Self, std::ffi::NulError> {
-        Ok(Self(CString::new(host)?, port))
+    fn new<T: Into<Vec<u8>>>(host: T, port: u16) -> Result<Self> {
+        Ok(Self(
+            CString::new(host).map_err(|_| Error::InvalidArgument)?,
+            port,
+        ))
     }
+}
+
+unsafe extern "C" fn on_state_changed(
+    _: *mut sys::juice_agent_t,
+    state: sys::juice_state_t,
+    user_ptr: *mut std::os::raw::c_void,
+) {
+    let agent: &Holder = &*(user_ptr as *const _);
+
+    if let Err(e) = state.try_into().map(|s| agent.on_state_changed(s)) {
+        log::error!("failed to map state {:?}", e)
+    }
+}
+
+unsafe extern "C" fn on_candidate(
+    _: *mut sys::juice_agent_t,
+    sdp: *const std::os::raw::c_char,
+    user_ptr: *mut std::os::raw::c_void,
+) {
+    let agent: &Holder = &*(user_ptr as *const _);
+    let candidate = {
+        let s = CStr::from_ptr(sdp);
+        String::from_utf8_lossy(s.to_bytes())
+    };
+    agent.on_candidate(candidate.to_string())
+}
+
+unsafe extern "C" fn on_gathering_done(_: *mut sys::juice_agent, user_ptr: *mut std::ffi::c_void) {
+    let agent: &Holder = &*(user_ptr as *const _);
+    agent.on_gathering_done()
+}
+
+unsafe extern "C" fn on_recv(
+    _: *mut libjuice_sys::juice_agent,
+    data: *const i8,
+    len: u64,
+    user_ptr: *mut std::ffi::c_void,
+) {
+    let agent: &Holder = &*(user_ptr as *const _);
+    let packet = core::slice::from_raw_parts(data as _, len as _);
+    agent.on_recv(packet)
 }
 
 #[cfg(test)]
