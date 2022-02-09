@@ -5,7 +5,7 @@ pub mod handler;
 use std::ffi::{CStr, CString};
 use std::marker::PhantomData;
 use std::net::IpAddr;
-use std::os::raw::c_int;
+use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 use std::sync::Mutex;
 
@@ -354,7 +354,7 @@ struct TurnServer {
 unsafe extern "C" fn on_state_changed(
     _: *mut sys::juice_agent_t,
     state: sys::juice_state_t,
-    user_ptr: *mut std::os::raw::c_void,
+    user_ptr: *mut c_void,
 ) {
     let agent: &Holder = &*(user_ptr as *const _);
 
@@ -365,8 +365,8 @@ unsafe extern "C" fn on_state_changed(
 
 unsafe extern "C" fn on_candidate(
     _: *mut sys::juice_agent_t,
-    sdp: *const std::os::raw::c_char,
-    user_ptr: *mut std::os::raw::c_void,
+    sdp: *const c_char,
+    user_ptr: *mut c_void,
 ) {
     let agent: &Holder = &*(user_ptr as *const _);
     let candidate = {
@@ -376,16 +376,16 @@ unsafe extern "C" fn on_candidate(
     agent.on_candidate(candidate.to_string())
 }
 
-unsafe extern "C" fn on_gathering_done(_: *mut sys::juice_agent, user_ptr: *mut std::ffi::c_void) {
+unsafe extern "C" fn on_gathering_done(_: *mut sys::juice_agent_t, user_ptr: *mut c_void) {
     let agent: &Holder = &*(user_ptr as *const _);
     agent.on_gathering_done()
 }
 
 unsafe extern "C" fn on_recv(
-    _: *mut libjuice_sys::juice_agent,
-    data: *const i8,
-    len: u64,
-    user_ptr: *mut std::ffi::c_void,
+    _: *mut sys::juice_agent_t,
+    data: *const c_char,
+    len: sys::size_t,
+    user_ptr: *mut c_void,
 ) {
     let agent: &Holder = &*(user_ptr as *const _);
     let packet = core::slice::from_raw_parts(data as _, len as _);
