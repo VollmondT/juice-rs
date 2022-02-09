@@ -1,6 +1,4 @@
 //! Embedded TURN server.
-
-use std::cmp::max;
 use std::ffi::CString;
 use std::marker::{PhantomData, PhantomPinned};
 use std::net::{IpAddr, SocketAddr};
@@ -156,12 +154,12 @@ impl Builder {
     }
 
     pub fn with_allocations_limit(mut self, limit: u32) -> Self {
-        self.max_allocations = max(limit, i32::MAX as u32) as i32;
+        self.max_allocations = std::cmp::min(limit, i32::MAX as u32) as i32;
         self
     }
 
     pub fn with_peers_limit(mut self, limit: u32) -> Self {
-        self.max_peers = max(limit, i32::MAX as u32) as i32;
+        self.max_peers = std::cmp::min(limit, i32::MAX as u32) as i32;
         self
     }
 }
