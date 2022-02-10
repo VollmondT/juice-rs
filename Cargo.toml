@@ -7,11 +7,16 @@ license = "LGPL-2.1"
 readme = "README.md"
 homepage = "https://github.com/VollmondT/juice-rs"
 authors = ["Vyacheslav S. Troshin"]
+keywords = [
+    "udp", "stun", "nat-traversal", "webrtc", "peer-to-peer", "p2p", "sdp", "RFC5389",
+    "ice", "RFC5766", "nat-hole-punching", "RFC445", "RFC8489", "RFC8656"
+]
+categories = ["network-programming"]
 
 [dependencies]
 log = "0.4"
 lazy_static = "1.4"
-libjuice-sys = { path = "libjuice-sys", version = "0.1.0" }
+libjuice-sys = { path = "libjuice-sys", version = "0.9" }
 
 [dev-dependencies]
 env_logger = "0.9"

@@ -1,9 +1,11 @@
 [package]
 name = "libjuice-sys"
-version = "0.1.0"
+version = "0.9.7"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Native bindings for libjuice"
+license = "LGPL-2.1"
+homepage = "https://github.com/VollmondT/juice-rs"
+authors = ["Vyacheslav S. Troshin"]
 
 [build-dependencies]
 bindgen = "0.59"
