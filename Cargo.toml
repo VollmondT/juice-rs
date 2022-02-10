@@ -8,8 +8,7 @@ readme = "README.md"
 homepage = "https://github.com/VollmondT/juice-rs"
 authors = ["Vyacheslav S. Troshin"]
 keywords = [
-    "udp", "stun", "nat-traversal", "webrtc", "peer-to-peer", "p2p", "sdp", "RFC5389",
-    "ice", "RFC5766", "nat-hole-punching", "RFC445", "RFC8489", "RFC8656"
+    "udp", "stun", "nat-traversal", "p2p", "ice"
 ]
 categories = ["network-programming"]
 
