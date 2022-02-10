@@ -1,4 +1,9 @@
-## libjuice-rs
+## libjuice-rs [![latest]][crates.io] [![doc]][docs.rs]
+
+[latest]: https://img.shields.io/crates/v/libjuice-rs.svg
+[crates.io]: https://crates.io/crates/libjuice-rs
+[doc]: https://docs.rs/libjuice-rs/badge.svg
+[docs.rs]: https://docs.rs/libjuice-rs
 
 Rust bindings for [libjuice](https://github.com/paullouisageneau/libjuice).
 Look at [datachannel-rs](https://github.com/lerouxrgd/datachannel-rs) if you need more batteries.
