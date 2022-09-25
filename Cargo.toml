@@ -1,6 +1,6 @@
 [package]
 name = "libjuice-rs"
-version = "0.1.0"
+version = "0.2.0"
 description = "Rust bindings for libjuice"
 edition = "2021"
 license = "LGPL-2.1"
@@ -15,7 +15,7 @@ categories = ["network-programming"]
 [dependencies]
 log = "0.4"
 lazy_static = "1.4"
-libjuice-sys = { path = "libjuice-sys", version = "0.9" }
+libjuice-sys = { path = "libjuice-sys", version = "1.0" }
 
 [dev-dependencies]
 env_logger = "0.9"

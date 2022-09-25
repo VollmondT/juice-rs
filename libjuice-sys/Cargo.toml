@@ -1,6 +1,6 @@
 [package]
 name = "libjuice-sys"
-version = "0.9.7"
+version = "1.0.4"
 edition = "2021"
 description = "Native bindings for libjuice"
 license = "LGPL-2.1"
@@ -8,5 +8,5 @@ homepage = "https://github.com/VollmondT/juice-rs"
 authors = ["Vyacheslav S. Troshin"]
 
 [build-dependencies]
-bindgen = "0.59"
+bindgen = "0.60"
 cmake = "0.1"
