@@ -1,6 +1,5 @@
 use libjuice_rs::{Agent, Handler, Server, ServerCredentials};
 use std::sync::mpsc::channel;
-use std::sync::{Arc, Barrier};
 
 include!("../src/test_util.rs");
 
@@ -16,15 +15,18 @@ fn run_server(server: Server) {
     let server_port = server.get_port();
     assert_eq!(server_port, 3478);
 
-    let gathering_barrier = Arc::new(Barrier::new(3));
+    let (gathering_tx, gathering_rx) = channel();
 
     let (first_tx, first_rx) = channel();
     let first_handler = Handler::default()
         .gathering_done_handler({
-            let barrier = gathering_barrier.clone();
+            let mut gathering_tx = Some(gathering_tx.clone());
             move || {
                 log::info!("first agent finished gathering");
-                barrier.wait();
+                // send only once
+                if let Some(ch) = gathering_tx.take() {
+                    ch.send(()).ok();
+                }
             }
         })
         .state_handler(move |state| log::info!("first changed state to: {:?}", state))
@@ -43,10 +45,13 @@ fn run_server(server: Server) {
     let (second_tx, second_rx) = channel();
     let second_handler = Handler::default()
         .gathering_done_handler({
-            let barrier = gathering_barrier.clone();
+            let mut gathering_tx = Some(gathering_tx);
             move || {
                 log::info!("second agent finished gathering");
-                barrier.wait();
+                // send only once
+                if let Some(ch) = gathering_tx.take() {
+                    ch.send(()).ok();
+                }
             }
         })
         .state_handler(move |state| log::info!("second changed state to: {:?}", state))
@@ -65,7 +70,9 @@ fn run_server(server: Server) {
     first.gather_candidates().unwrap();
     second.gather_candidates().unwrap();
 
-    gathering_barrier.wait();
+    for _ in 0..2 {
+        gathering_rx.recv().unwrap();
+    }
 
     let has_relayed = loop {
         if let Ok(candidate) = first_rx.try_recv() {

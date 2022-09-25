@@ -19,6 +19,7 @@ use crate::Result;
 /// Convert c function retcode to result
 fn raw_retcode_to_result(retcode: c_int) -> Result<()> {
     match retcode {
+        //sys::JUICE_ERR_SUCCESS => Ok(()),
         0 => Ok(()),
         sys::JUICE_ERR_INVALID => Err(Error::InvalidArgument),
         sys::JUICE_ERR_FAILED => Err(Error::Failed),
@@ -34,6 +35,7 @@ pub struct Builder {
     bind_address: Option<CString>,
     turn_servers: Vec<TurnServer>,
     handler: Handler,
+    concurrency_mode: ConcurrencyMode,
 }
 
 impl Builder {
@@ -45,6 +47,7 @@ impl Builder {
             bind_address: None,
             turn_servers: vec![],
             handler,
+            concurrency_mode: ConcurrencyMode::Poll,
         }
     }
 
@@ -82,8 +85,13 @@ impl Builder {
         Ok(self)
     }
 
+    pub fn concurrency(mut self, mode: ConcurrencyMode) -> Self {
+        self.concurrency_mode = mode;
+        self
+    }
+
     /// Build agent
-    pub fn build(self) -> crate::Result<Agent> {
+    pub fn build(self) -> Result<Agent> {
         ensure_logging();
 
         let mut holder = Box::new(Holder {
@@ -120,6 +128,7 @@ impl Builder {
         };
 
         let config = &sys::juice_config {
+            concurrency_mode: self.concurrency_mode.into(),
             stun_server_host: stun_server.0.as_ptr(),
             stun_server_port: stun_server.1,
             turn_servers: turn_servers.0 as _,
@@ -165,7 +174,7 @@ impl Agent {
     }
 
     /// Get local sdp
-    pub fn get_local_description(&self) -> crate::Result<String> {
+    pub fn get_local_description(&self) -> Result<String> {
         let mut buf = vec![0; sys::JUICE_MAX_SDP_STRING_LEN as _];
         let res = unsafe {
             let res = sys::juice_get_local_description(
@@ -173,7 +182,7 @@ impl Agent {
                 buf.as_mut_ptr(),
                 buf.len() as _,
             );
-            let _ = raw_retcode_to_result(res)?;
+            raw_retcode_to_result(res)?;
             let s = CStr::from_ptr(buf.as_mut_ptr());
             String::from_utf8_lossy(s.to_bytes())
         };
@@ -181,40 +190,40 @@ impl Agent {
     }
 
     /// Start ICE candidates gathering
-    pub fn gather_candidates(&self) -> crate::Result<()> {
+    pub fn gather_candidates(&self) -> Result<()> {
         let ret = unsafe { sys::juice_gather_candidates(self.holder.agent) };
         raw_retcode_to_result(ret)
     }
 
     /// Set remote description
-    pub fn set_remote_description(&self, sdp: String) -> crate::Result<()> {
+    pub fn set_remote_description(&self, sdp: String) -> Result<()> {
         let s = CString::new(sdp).map_err(|_| Error::InvalidArgument)?;
         let ret = unsafe { sys::juice_set_remote_description(self.holder.agent, s.as_ptr()) };
         raw_retcode_to_result(ret)
     }
 
     /// Add remote candidate
-    pub fn add_remote_candidate(&self, sdp: String) -> crate::Result<()> {
+    pub fn add_remote_candidate(&self, sdp: String) -> Result<()> {
         let s = CString::new(sdp).map_err(|_| Error::InvalidArgument)?;
         let ret = unsafe { sys::juice_add_remote_candidate(self.holder.agent, s.as_ptr()) };
         raw_retcode_to_result(ret)
     }
 
     /// Signal remote candidates exhausted
-    pub fn set_remote_gathering_done(&self) -> crate::Result<()> {
+    pub fn set_remote_gathering_done(&self) -> Result<()> {
         let ret = unsafe { sys::juice_set_remote_gathering_done(self.holder.agent) };
         raw_retcode_to_result(ret)
     }
 
     /// Send packet to remote endpoint
-    pub fn send(&self, data: &[u8]) -> crate::Result<()> {
+    pub fn send(&self, data: &[u8]) -> Result<()> {
         let ret =
             unsafe { sys::juice_send(self.holder.agent, data.as_ptr() as _, data.len() as _) };
         raw_retcode_to_result(ret)
     }
 
     /// Get selected candidates pair (local,remote)
-    pub fn get_selected_candidates(&self) -> crate::Result<(String, String)> {
+    pub fn get_selected_candidates(&self) -> Result<(String, String)> {
         let mut local = vec![0; sys::JUICE_MAX_SDP_STRING_LEN as _];
         let mut remote = vec![0; sys::JUICE_MAX_SDP_STRING_LEN as _];
         let ret = unsafe {
@@ -225,7 +234,7 @@ impl Agent {
                 remote.as_mut_ptr() as _,
                 remote.len() as _,
             );
-            let _ = raw_retcode_to_result(res)?;
+            raw_retcode_to_result(res)?;
             let l = CStr::from_ptr(local.as_mut_ptr());
             let r = CStr::from_ptr(remote.as_mut_ptr());
             (
@@ -236,7 +245,7 @@ impl Agent {
         Ok(ret)
     }
 
-    pub fn get_selected_addresses(&self) -> crate::Result<(String, String)> {
+    pub fn get_selected_addresses(&self) -> Result<(String, String)> {
         let mut local = vec![0; sys::JUICE_MAX_SDP_STRING_LEN as _];
         let mut remote = vec![0; sys::JUICE_MAX_SDP_STRING_LEN as _];
         let ret = unsafe {
@@ -247,7 +256,7 @@ impl Agent {
                 remote.as_mut_ptr() as _,
                 remote.len() as _,
             );
-            let _ = raw_retcode_to_result(res)?;
+            raw_retcode_to_result(res)?;
             let l = CStr::from_ptr(local.as_mut_ptr());
             let r = CStr::from_ptr(remote.as_mut_ptr());
             (
@@ -298,7 +307,7 @@ impl Holder {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum State {
     Disconnected,
     Gathering,
@@ -321,6 +330,26 @@ impl TryFrom<sys::juice_state> for State {
             sys::juice_state_JUICE_STATE_FAILED => State::Failed,
             _ => return Err(()),
         })
+    }
+}
+
+#[derive(Default)]
+pub enum ConcurrencyMode {
+    /// Single poll thread for all agents
+    #[default]
+    Poll,
+    Mux,
+    /// Thread per agent
+    Thread,
+}
+
+impl From<ConcurrencyMode> for sys::juice_concurrency_mode {
+    fn from(mode: ConcurrencyMode) -> Self {
+        match mode {
+            ConcurrencyMode::Poll => sys::juice_concurrency_mode_JUICE_CONCURRENCY_MODE_POLL,
+            ConcurrencyMode::Mux => sys::juice_concurrency_mode_JUICE_CONCURRENCY_MODE_MUX,
+            ConcurrencyMode::Thread => sys::juice_concurrency_mode_JUICE_CONCURRENCY_MODE_THREAD,
+        }
     }
 }
 
@@ -395,12 +424,13 @@ unsafe extern "C" fn on_recv(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_util::logger_init;
     use crate::Handler;
     use std::sync::{Arc, Barrier};
 
     #[test]
     fn build() {
-        crate::test_util::logger_init();
+        logger_init();
 
         let handler = Handler::default();
         let agent = Agent::builder(handler).build().unwrap();
@@ -414,7 +444,7 @@ mod tests {
 
     #[test]
     fn gather() {
-        crate::test_util::logger_init();
+        logger_init();
 
         let gathering_barrier = Arc::new(Barrier::new(2));
 
@@ -438,7 +468,6 @@ mod tests {
         );
 
         agent.gather_candidates().unwrap();
-        assert_eq!(agent.get_state(), State::Gathering);
 
         let _ = gathering_barrier.wait();
 

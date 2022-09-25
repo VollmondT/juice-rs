@@ -1,5 +1,5 @@
 use std::sync::mpsc::{channel, Receiver};
-use std::sync::{Arc, Barrier};
+use std::sync::Arc;
 use std::thread::{sleep, spawn};
 use std::time::Duration;
 
@@ -11,15 +11,17 @@ include!("../src/test_util.rs");
 fn connectivity_no_trickle() {
     logger_init();
 
-    let gathering_barrier = Arc::new(Barrier::new(3));
+    let (gather_done_tx, gather_done_rx) = channel();
 
     let (first_tx, first_rx) = channel();
     let first_handler = Handler::default()
         .gathering_done_handler({
-            let barrier = gathering_barrier.clone();
+            let mut gather_done_tx = Some(gather_done_tx.clone());
             move || {
                 log::info!("first agent finished gathering");
-                barrier.wait();
+                if let Some(ch) = gather_done_tx.take() {
+                    ch.send(()).unwrap();
+                }
             }
         })
         .state_handler(move |state| log::info!("first changed state to: {:?}", state))
@@ -33,10 +35,12 @@ fn connectivity_no_trickle() {
     let (second_tx, second_rx) = channel();
     let second_handler = Handler::default()
         .gathering_done_handler({
-            let barrier = gathering_barrier.clone();
+            let mut gather_done_tx = Some(gather_done_tx);
             move || {
                 log::info!("second agent finished gathering");
-                barrier.wait();
+                if let Some(ch) = gather_done_tx.take() {
+                    ch.send(()).unwrap();
+                }
             }
         })
         .state_handler(move |state| log::info!("second changed state to: {:?}", state))
@@ -52,7 +56,9 @@ fn connectivity_no_trickle() {
     first.gather_candidates().unwrap();
     second.gather_candidates().unwrap();
 
-    gathering_barrier.wait();
+    for _ in 0..2 {
+        gather_done_rx.recv().unwrap()
+    }
 
     let first_desc = first.get_local_description().unwrap();
     second.set_remote_description(first_desc).unwrap();
@@ -124,18 +130,22 @@ fn trickle_signaling(ch: Receiver<TrickleEvent>, agent: Arc<Agent>) {
 fn connectivity_trickle() {
     logger_init();
 
-    let gathering_barrier = Arc::new(Barrier::new(3));
+    let (gather_done_tx, gather_done_rx) = channel();
 
     let (first_tx, first_rx) = channel();
     let (first_candidate_tx, first_candidate_rx) = channel();
     let first_handler = Handler::default()
         .gathering_done_handler({
-            let barrier = gathering_barrier.clone();
+            let mut gather_done_tx = Some(gather_done_tx.clone());
             let first_candidate_tx = first_candidate_tx.clone();
             move || {
                 log::info!("first agent finished gathering");
                 let _ = first_candidate_tx.send(TrickleEvent::Eof);
-                barrier.wait();
+
+                // oneshot
+                if let Some(ch) = gather_done_tx.take() {
+                    ch.send(()).ok();
+                }
             }
         })
         .state_handler(move |state| log::info!("first changed state to: {:?}", state))
@@ -162,12 +172,11 @@ fn connectivity_trickle() {
     let (second_candidate_tx, second_candidate_rx) = channel();
     let second_handler = Handler::default()
         .gathering_done_handler({
-            let barrier = gathering_barrier.clone();
             let second_candidate_tx = second_candidate_tx.clone();
             move || {
                 log::info!("second agent finished gathering");
                 let _ = second_candidate_tx.send(TrickleEvent::Eof);
-                barrier.wait();
+                gather_done_tx.send(()).ok();
             }
         })
         .state_handler(move |state| log::info!("second changed state to: {:?}", state))
@@ -204,7 +213,9 @@ fn connectivity_trickle() {
     first.gather_candidates().unwrap();
     second.gather_candidates().unwrap();
 
-    gathering_barrier.wait();
+    for _ in 0..2 {
+        gather_done_rx.recv().unwrap();
+    }
 
     sleep(Duration::from_secs(2));
 
