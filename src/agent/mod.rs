@@ -47,7 +47,7 @@ impl Builder {
             bind_address: None,
             turn_servers: vec![],
             handler,
-            concurrency_mode: ConcurrencyMode::Poll,
+            concurrency_mode: ConcurrencyMode::default(),
         }
     }
 
@@ -333,7 +333,7 @@ impl TryFrom<sys::juice_state> for State {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default, Eq, PartialEq, Clone, Copy)]
 pub enum ConcurrencyMode {
     /// Single poll thread for all agents
     #[default]

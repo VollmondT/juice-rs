@@ -6,7 +6,7 @@
 //! the original library
 //! [tests](https://github.com/paullouisageneau/libjuice/blob/master/test/connectivity.c).
 
-pub use agent::{handler::Handler, Agent, Builder, State};
+pub use agent::{handler::Handler, Agent, Builder, ConcurrencyMode, State};
 pub use error::{Error, Result};
 pub use server::{Builder as ServerBuilder, Credentials as ServerCredentials, Server};
 

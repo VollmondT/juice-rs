@@ -3,14 +3,11 @@ use std::sync::Arc;
 use std::thread::{sleep, spawn};
 use std::time::Duration;
 
-use libjuice_rs::{Agent, Handler, State};
+use libjuice_rs::{Agent, ConcurrencyMode, Handler, State};
 
 include!("../src/test_util.rs");
 
-#[test]
-fn connectivity_no_trickle() {
-    logger_init();
-
+fn connectivity_no_trickle(mode: ConcurrencyMode) {
     let (gather_done_tx, gather_done_rx) = channel();
 
     let (first_tx, first_rx) = channel();
@@ -30,7 +27,10 @@ fn connectivity_no_trickle() {
             let _ = first_tx.send(packet.to_vec());
         });
 
-    let first = Agent::builder(first_handler).build().unwrap();
+    let first = Agent::builder(first_handler)
+        .concurrency(mode)
+        .build()
+        .unwrap();
 
     let (second_tx, second_rx) = channel();
     let second_handler = Handler::default()
@@ -49,7 +49,8 @@ fn connectivity_no_trickle() {
             let _ = second_tx.send(packet.to_vec());
         });
     let second = Agent::builder(second_handler)
-        .with_port_range(5000, 5010)
+        .concurrency(mode)
+        .with_port_range(5000, 6000)
         .build()
         .unwrap();
 
@@ -101,6 +102,23 @@ fn connectivity_no_trickle() {
     );
 }
 
+#[test]
+fn connectivity_no_trickle_poll() {
+    logger_init();
+    connectivity_no_trickle(ConcurrencyMode::Poll);
+}
+
+#[test]
+fn connectivity_no_trickle_thread() {
+    logger_init();
+    connectivity_no_trickle(ConcurrencyMode::Thread);
+}
+
+#[test]
+fn connectivity_no_trickle_mux() {
+    connectivity_no_trickle(ConcurrencyMode::Mux);
+}
+
 enum TrickleEvent {
     Candidate(String),
     Eof,
@@ -126,10 +144,7 @@ fn trickle_signaling(ch: Receiver<TrickleEvent>, agent: Arc<Agent>) {
     }
 }
 
-#[test]
-fn connectivity_trickle() {
-    logger_init();
-
+fn connectivity_trickle(mode: ConcurrencyMode) {
     let (gather_done_tx, gather_done_rx) = channel();
 
     let (first_tx, first_rx) = channel();
@@ -163,6 +178,7 @@ fn connectivity_trickle() {
     let bind = "127.0.0.1".parse().unwrap();
     let first = Arc::new(
         Agent::builder(first_handler)
+            .concurrency(mode)
             .with_bind_address(&bind)
             .build()
             .unwrap(),
@@ -189,7 +205,12 @@ fn connectivity_trickle() {
             let _ = second_candidate_tx.send(TrickleEvent::Candidate(sdp));
         });
 
-    let second = Arc::new(Agent::builder(second_handler).build().unwrap());
+    let second = Arc::new(
+        Agent::builder(second_handler)
+            .concurrency(mode)
+            .build()
+            .unwrap(),
+    );
 
     let handle1 = {
         let first = first.clone();
@@ -259,4 +280,22 @@ fn connectivity_trickle() {
 
     handle1.join().unwrap();
     handle2.join().unwrap();
+}
+
+#[test]
+fn connectivity_trickle_poll() {
+    logger_init();
+    connectivity_trickle(ConcurrencyMode::Poll);
+}
+
+#[test]
+fn connectivity_trickle_thread() {
+    logger_init();
+    connectivity_trickle(ConcurrencyMode::Thread);
+}
+
+#[test]
+fn connectivity_trickle_mux() {
+    logger_init();
+    connectivity_trickle(ConcurrencyMode::Mux);
 }
