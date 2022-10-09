@@ -335,11 +335,12 @@ impl TryFrom<sys::juice_state> for State {
 
 #[derive(Debug, Default, Eq, PartialEq, Clone, Copy)]
 pub enum ConcurrencyMode {
-    /// Single poll thread for all agents
+    /// Connections share a single thread
     #[default]
     Poll,
+    /// Connections are multiplexed on a single UDP socket
     Mux,
-    /// Thread per agent
+    /// Each connection runs in its own thread
     Thread,
 }
 
@@ -386,9 +387,9 @@ unsafe extern "C" fn on_state_changed(
     user_ptr: *mut c_void,
 ) {
     let agent: &Holder = &*(user_ptr as *const _);
-
-    if let Err(e) = state.try_into().map(|s| agent.on_state_changed(s)) {
-        log::error!("failed to map state {:?}", e)
+    match state.try_into() {
+        Ok(s) => agent.on_state_changed(s),
+        Err(e) => log::error!("failed to map state {:?}", e),
     }
 }
 
